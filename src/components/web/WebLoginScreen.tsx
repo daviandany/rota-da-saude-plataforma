@@ -21,12 +21,31 @@ interface WebLoginScreenProps {
 }
 
 export const WebLoginScreen: React.FC<WebLoginScreenProps> = ({ onSwitchToMobile }) => {
-  const { login, loginDemo } = useAuth();
+  const { login, loginDemo, loginGoogle, isFirebaseConnected } = useAuth();
   const [selectedRole, setSelectedRole] = useState<'PATIENT' | 'PROFESSIONAL'>('PATIENT');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleGoogleSignIn = async () => {
+    setError(null);
+    setGoogleLoading(true);
+    try {
+      await loginGoogle(selectedRole);
+    } catch (err: any) {
+      if (err.code === 'auth/popup-closed-by-user') {
+        setError('O popup do Google foi fechado antes de completar o login.');
+      } else if (err.code === 'auth/cancelled-popup-request') {
+        setError('Tentativa de login cancelada.');
+      } else {
+        setError(err.message || 'Falha ao autenticar com o Google via Firebase.');
+      }
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -148,23 +167,124 @@ export const WebLoginScreen: React.FC<WebLoginScreenProps> = ({ onSwitchToMobile
           </div>
 
           <div className="max-w-md mx-auto w-full">
-            <div className="mb-6">
-              <span className="text-xs font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400">
-                Acesso Seguro
-              </span>
-              <h3 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight mt-1">
+            <div className="mb-5">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400">
+                  Acesso Seguro
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Firebase Conectado
+                </span>
+              </div>
+              <h3 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
                 Entrar na Plataforma
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                Selecione o perfil desejado ou use o acesso demonstrativo com 1 clique.
+                Acesse diretamente com sua conta Google ou utilize as credenciais institucionais.
               </p>
+            </div>
+
+            {error && (
+              <div className="mb-4 p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 rounded-xl flex items-center gap-2 text-xs text-rose-700 dark:text-rose-300 font-medium">
+                <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {/* Role selection for Google Login */}
+            <div className="mb-3">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
+                1. Selecione seu Perfil:
+              </label>
+              <div className="grid grid-cols-2 gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setSelectedRole('PATIENT')}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${
+                    selectedRole === 'PATIENT'
+                      ? 'bg-white dark:bg-slate-700 text-teal-800 dark:text-teal-200 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <User className="w-3.5 h-3.5" />
+                  <span>Paciente</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRole('PROFESSIONAL')}
+                  className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${
+                    selectedRole === 'PROFESSIONAL'
+                      ? 'bg-white dark:bg-slate-700 text-blue-800 dark:text-blue-200 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Stethoscope className="w-3.5 h-3.5" />
+                  <span>Profissional</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 2. Primary Google Login Button (Direct Firebase Connection) */}
+            <div className="mb-6 space-y-2">
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                2. Autenticação Integrada:
+              </label>
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                disabled={loading || googleLoading}
+                className="w-full py-3 px-4 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-800 dark:text-white border-2 border-slate-300/80 dark:border-slate-700 rounded-2xl text-xs font-black transition flex items-center justify-center gap-3 shadow-sm hover:shadow-md active:scale-[0.99] cursor-pointer"
+              >
+                {googleLoading ? (
+                  <div className="w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                    />
+                  </svg>
+                )}
+                <span>
+                  {googleLoading
+                    ? 'Conectando ao Firebase...'
+                    : `Entrar com o Google (${selectedRole === 'PATIENT' ? 'Paciente' : 'Profissional'})`}
+                </span>
+              </button>
+
+              <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-1">
+                <span>Conecta com Firebase Auth e sincroniza com Firestore</span>
+                <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Pronto
+                </span>
+              </div>
+            </div>
+
+            <div className="relative my-5 text-center">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-200 dark:border-slate-800" />
+              </div>
+              <span className="relative px-3 bg-white dark:bg-slate-900 text-[11px] font-semibold text-slate-400">
+                ou acesso rápido demonstrativo
+              </span>
             </div>
 
             {/* Quick 1-Click Demo Buttons */}
             <div className="mb-6 space-y-2">
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                Acesso Rápido de Demonstração:
-              </label>
               <div className="grid grid-cols-2 gap-2.5">
                 <button
                   type="button"

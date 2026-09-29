@@ -9,7 +9,7 @@ interface LoginScreenProps {
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ initialRole = 'PATIENT' }) => {
-  const { login, loginDemo } = useAuth();
+  const { login, loginDemo, loginGoogle, isFirebaseConnected } = useAuth();
   const [role, setRole] = useState<UserRole>(initialRole);
   const [email, setEmail] = useState<string>(
     initialRole === 'PATIENT' ? 'maria.silva@email.com' : 'carlos.mendes@saude.gov.br'
@@ -20,6 +20,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ initialRole = 'PATIENT
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [rememberMe, setRememberMe] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(false);
+  const [googleLoading, setGoogleLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -33,6 +34,22 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ initialRole = 'PATIENT
       setPassword('medico123');
     }
     setError(null);
+  };
+
+  const handleGoogleLogin = async () => {
+    setError(null);
+    setGoogleLoading(true);
+    try {
+      await loginGoogle(role, email);
+    } catch (err: any) {
+      if (err.code === 'auth/popup-closed-by-user') {
+        setError('O popup do Google foi fechado antes de completar o login.');
+      } else {
+        setError(err.message || 'Falha ao autenticar com Google e Firebase.');
+      }
+    } finally {
+      setGoogleLoading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -103,6 +120,57 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ initialRole = 'PATIENT
 
       {/* Form Container */}
       <div className="w-full max-w-sm mx-auto bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200/80 dark:border-slate-800 p-6 transition-colors">
+        {/* Google Sign-In with Firebase button */}
+        <div className="mb-5">
+          <button
+            type="button"
+            onClick={handleGoogleLogin}
+            disabled={loading || googleLoading}
+            className="w-full py-2.5 px-3 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-750 text-slate-800 dark:text-white border-2 border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2.5 shadow-xs active:scale-[0.99] cursor-pointer"
+          >
+            {googleLoading ? (
+              <div className="w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+            )}
+            <span>
+              {googleLoading
+                ? 'Conectando ao Firebase...'
+                : `Entrar com Google (${role === 'PATIENT' ? 'Paciente' : 'Profissional'})`}
+            </span>
+          </button>
+          <div className="flex items-center justify-center gap-1.5 text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold mt-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>Firebase Firestore & Auth Conectado</span>
+          </div>
+        </div>
+
+        <div className="relative my-4 text-center">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-slate-200 dark:border-slate-800" />
+          </div>
+          <span className="relative px-2 bg-white dark:bg-slate-900 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+            ou com e-mail institucional
+          </span>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
             <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs font-medium">

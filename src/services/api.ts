@@ -9,6 +9,7 @@ import {
   EducationalContent,
   Patient,
 } from '../types';
+import { FirestoreClinicalService } from './firestoreService';
 
 const API_BASE = '/api';
 
@@ -41,6 +42,23 @@ export const api = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Falha no cadastro');
+    return data;
+  },
+
+  async loginGoogleFirebase(payload: {
+    uid: string;
+    email: string;
+    name: string;
+    photoURL?: string;
+    role: string;
+  }): Promise<{ token: string; user: User }> {
+    const res = await fetch(`${API_BASE}/auth/google-firebase`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Falha na autenticação Google');
     return data;
   },
 
@@ -79,7 +97,15 @@ export const api = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Erro ao registrar pressão');
-    return data.data;
+    const record = data.data;
+
+    try {
+      await FirestoreClinicalService.recordBloodPressure(record);
+    } catch (e) {
+      console.warn('[Firestore] Registro local mantido, erro no Firestore:', e);
+    }
+
+    return record;
   },
 
   async recordGlucose(payload: {
@@ -96,7 +122,15 @@ export const api = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Erro ao registrar glicemia');
-    return data.data;
+    const record = data.data;
+
+    try {
+      await FirestoreClinicalService.recordGlucose(record);
+    } catch (e) {
+      console.warn('[Firestore] Registro local mantido, erro no Firestore:', e);
+    }
+
+    return record;
   },
 
   async getHistory(patientId?: string, timeframe: string = '7d'): Promise<any> {
@@ -135,7 +169,15 @@ export const api = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Erro ao adicionar medicamento');
-    return data.data;
+    const med = data.data;
+
+    try {
+      await FirestoreClinicalService.addMedication(med);
+    } catch (e) {
+      console.warn('[Firestore] Registro local mantido, erro no Firestore:', e);
+    }
+
+    return med;
   },
 
   async updateMedicationStatus(id: string, status: string): Promise<Medication> {
@@ -146,6 +188,13 @@ export const api = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Erro ao atualizar medicamento');
+
+    try {
+      await FirestoreClinicalService.updateMedicationStatus(id, status as any);
+    } catch (e) {
+      console.warn('[Firestore] Status local mantido, erro no Firestore:', e);
+    }
+
     return data.data;
   },
 
@@ -168,7 +217,15 @@ export const api = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Erro ao agendar consulta');
-    return data.data;
+    const app = data.data;
+
+    try {
+      await FirestoreClinicalService.createAppointment(app);
+    } catch (e) {
+      console.warn('[Firestore] Registro local mantido, erro no Firestore:', e);
+    }
+
+    return app;
   },
 
   // Alerts
@@ -191,6 +248,11 @@ export const api = {
       headers: getAuthHeaders(),
     });
     const data = await res.json();
+    try {
+      await FirestoreClinicalService.resolveClinicalAlert(id);
+    } catch (e) {
+      console.warn('[Firestore] Alerta resolvido localmente, erro no Firestore:', e);
+    }
     return data.success;
   },
 
@@ -225,8 +287,24 @@ export const api = {
       headers: getAuthHeaders(),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao listar pacientes');
-    return data.data;
+    let patients: Patient[] = data.data || [];
+
+    // Mescla pacientes persistidos no Firestore se autenticado
+    try {
+      if (FirestoreClinicalService.isAuthReady()) {
+        const fsPatients = await FirestoreClinicalService.getAllPatients();
+        if (fsPatients && fsPatients.length > 0) {
+          const map = new Map<string, Patient>();
+          patients.forEach((p) => map.set(p.id, p));
+          fsPatients.forEach((fp) => map.set(fp.id, { ...map.get(fp.id), ...fp }));
+          patients = Array.from(map.values());
+        }
+      }
+    } catch {
+      // Ignora erro se sem permissão ou offline
+    }
+
+    return patients;
   },
 
   async getPatientProfile(patientId: string): Promise<any> {

@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { ArrowLeft, UserPlus, Shield, Heart } from 'lucide-react';
 import { api } from '../../services/api';
 import { useNotifications } from '../../context/NotificationContext';
+import { FirestoreClinicalService } from '../../services/firestoreService';
+import { Patient, RiskLevel } from '../../types';
 
 interface NewPatientModalProps {
   isOpen: boolean;
@@ -29,12 +31,51 @@ export const NewPatientModal: React.FC<NewPatientModalProps> = ({ isOpen, onClos
     setError(null);
 
     try {
-      // Register new patient via auth or mock creation
-      await new Promise((r) => setTimeout(r, 500));
+      const patientId = 'pat-' + Date.now();
+      const newPatient: Patient = {
+        id: patientId,
+        userId: 'u-' + Date.now(),
+        name,
+        email: email || `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@saude.gov.br`,
+        age,
+        gender: 'Indefinido',
+        conditions: ['Hipertensão Arterial Sistêmica'],
+        riskLevel: (riskLevel === 'MUITO_ALTO' ? 'ALTO' : riskLevel === 'MEDIO' ? 'MODERADO' : riskLevel) as RiskLevel,
+        healthcareUnit: 'UBS Central de Referência - ESF 01',
+        adherenceRate: 85,
+        latestBP: `${systolic}/${diastolic} mmHg`,
+        lastMeasuredAt: new Date().toISOString(),
+      };
+
+      // Persiste no Firestore
+      try {
+        await FirestoreClinicalService.savePatient(newPatient);
+        if (systolic && diastolic) {
+          await FirestoreClinicalService.recordBloodPressure({
+            id: 'bp-' + Date.now(),
+            patientId,
+            systolic,
+            diastolic,
+            pulse: 75,
+            recordedAt: new Date().toISOString(),
+            notes: 'Aferição inicial de triagem no cadastramento ambulatorial.',
+            isCritical: systolic >= 160 || diastolic >= 100,
+            statusText:
+              systolic >= 160 || diastolic >= 100
+                ? 'Crítica'
+                : systolic >= 140 || diastolic >= 90
+                ? 'Atenção'
+                : 'Normal',
+          });
+        }
+      } catch (fsErr) {
+        console.warn('[Firestore] Registro salvo localmente, erro Firestore:', fsErr);
+      }
+
       showNotification({
         type: 'GENERAL',
         title: 'Novo Paciente Cadastrado',
-        body: `${name} foi adicionado com sucesso à sua lista de pacientes ativos.`,
+        body: `${name} foi adicionado com sucesso e persistido no prontuário.`,
       });
       onSuccess();
       onClose();

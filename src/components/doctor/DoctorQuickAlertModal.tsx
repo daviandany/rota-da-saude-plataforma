@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { ArrowLeft, BellRing, AlertTriangle, Send } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationContext';
+import { FirestoreClinicalService } from '../../services/firestoreService';
+import { ClinicalAlert } from '../../types';
 
 interface DoctorQuickAlertModalProps {
   isOpen: boolean;
@@ -27,7 +29,23 @@ export const DoctorQuickAlertModal: React.FC<DoctorQuickAlertModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 400));
+
+    try {
+      const alertItem: ClinicalAlert = {
+        id: 'alt-' + Date.now(),
+        patientId: 'pat-maria',
+        patientName: targetPatient,
+        severity: severity === 'CRITICAL' ? 'CRITICO' : severity === 'WARNING' ? 'ATENCAO' : 'INFO',
+        title,
+        message,
+        metricType: 'PRESSURE',
+        status: 'PENDENTE',
+        triggeredAt: new Date().toISOString(),
+      };
+      await FirestoreClinicalService.createClinicalAlert(alertItem);
+    } catch (e) {
+      console.warn('[Firestore] Alerta registrado localmente, erro Firestore:', e);
+    }
 
     showNotification({
       type: severity === 'CRITICAL' ? 'CRITICAL_READING' : 'GENERAL',

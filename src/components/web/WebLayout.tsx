@@ -24,14 +24,12 @@ import {
 interface WebLayoutProps {
   children: React.ReactNode;
   onSwitchToMobile: () => void;
-  onOpenArchModal: () => void;
   onOpenNotificationModal: () => void;
 }
 
 export const WebLayout: React.FC<WebLayoutProps> = ({
   children,
   onSwitchToMobile,
-  onOpenArchModal,
   onOpenNotificationModal,
 }) => {
   const { user, logout, loginDemo } = useAuth();
@@ -112,15 +110,6 @@ export const WebLayout: React.FC<WebLayoutProps> = ({
               </button>
             </div>
 
-            {/* Architecture Modal */}
-            <button
-              onClick={onOpenArchModal}
-              className="px-2.5 py-1.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-700/60 text-xs font-semibold transition flex items-center gap-1.5"
-            >
-              <Database className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="hidden xl:inline">Supabase & Docker</span>
-            </button>
-
             {/* Global Dark Mode Switcher */}
             <ThemeToggle />
 
@@ -150,10 +139,27 @@ export const WebLayout: React.FC<WebLayoutProps> = ({
             </button>
 
             {/* User Avatar & Logout */}
-            <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
+            <div className="flex items-center gap-2.5 pl-2 border-l border-slate-800">
+              {user?.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt={user.name}
+                  className="w-8 h-8 rounded-full object-cover border-2 border-teal-500 shadow-xs"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-teal-800 text-teal-200 font-black text-xs flex items-center justify-center border border-teal-600">
+                  {user?.name ? user.name.slice(0, 2).toUpperCase() : 'US'}
+                </div>
+              )}
+
               <div className="hidden sm:block text-right">
-                <div className="text-xs font-bold text-white leading-tight">
-                  {user?.name || 'Usuário'}
+                <div className="text-xs font-bold text-white leading-tight flex items-center gap-1.5 justify-end">
+                  <span>{user?.name || 'Usuário'}</span>
+                  {user?.isGoogleAuth && (
+                    <span className="text-[9px] font-black bg-blue-500/20 text-blue-300 border border-blue-500/30 px-1 rounded" title="Autenticado com Google & Firebase">
+                      Google
+                    </span>
+                  )}
                 </div>
                 <div className="text-[10px] text-slate-400">
                   {user?.role === 'PROFESSIONAL' ? 'Médico de Família' : 'Paciente SUS'}
@@ -162,8 +168,8 @@ export const WebLayout: React.FC<WebLayoutProps> = ({
 
               <button
                 onClick={logout}
-                title="Sair da conta"
-                className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition"
+                title="Sair da conta e desconectar do Firebase"
+                className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition cursor-pointer"
               >
                 <LogOut className="w-4 h-4" />
               </button>

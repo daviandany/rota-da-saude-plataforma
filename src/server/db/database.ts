@@ -45,6 +45,7 @@ export interface IDatabase {
   // Professionals
   getProfessionalByUserId(userId: string): Promise<Professional | null>;
   getProfessionalById(id: string): Promise<Professional | null>;
+  createProfessional(professional: Professional): Promise<Professional>;
 
   // Blood Pressure
   getBloodPressureRecords(patientId: string): Promise<BloodPressureRecord[]>;
@@ -132,6 +133,11 @@ class InMemoryDatabase implements IDatabase {
 
   async getProfessionalById(id: string): Promise<Professional | null> {
     return this.professionals.find((p) => p.id === id) || null;
+  }
+
+  async createProfessional(professional: Professional): Promise<Professional> {
+    this.professionals.push(professional);
+    return professional;
   }
 
   async getBloodPressureRecords(patientId: string): Promise<BloodPressureRecord[]> {
@@ -556,6 +562,25 @@ class PostgresDatabase implements IDatabase {
       avatarUrl: r.avatar_url,
       createdAt: r.created_at,
     };
+  }
+
+  async createProfessional(p: Professional): Promise<Professional> {
+    await this.pool.query(
+      `INSERT INTO professionals (id, user_id, name, email, crm, specialty, healthcare_unit, avatar_url, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        p.id,
+        p.userId,
+        p.name,
+        p.email,
+        p.crm,
+        p.specialty,
+        p.healthcareUnit,
+        p.avatarUrl || null,
+        p.createdAt || new Date().toISOString(),
+      ]
+    );
+    return p;
   }
 
   async getBloodPressureRecords(patientId: string): Promise<BloodPressureRecord[]> {

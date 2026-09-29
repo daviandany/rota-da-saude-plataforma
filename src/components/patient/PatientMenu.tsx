@@ -18,12 +18,10 @@ import { useTheme } from '../../context/ThemeContext';
 
 interface PatientMenuProps {
   onNavigateTab: (tab: string) => void;
-  onOpenArchModal: () => void;
 }
 
 export const PatientMenu: React.FC<PatientMenuProps> = ({
   onNavigateTab,
-  onOpenArchModal,
 }) => {
   const { user, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
@@ -153,15 +151,15 @@ export const PatientMenu: React.FC<PatientMenuProps> = ({
           </button>
 
           <button
-            onClick={onOpenArchModal}
+            onClick={() => showNotice('Rota da Saúde v1.0 • Plataforma de Cuidado em Hipertensão e Diabetes')}
             className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 transition text-left"
           >
             <div className="flex items-center gap-3 text-xs font-medium text-slate-700 dark:text-slate-200">
               <Info className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-              <span>Sobre o aplicativo & Arquitetura</span>
+              <span>Sobre o Aplicativo</span>
             </div>
             <span className="text-[10px] text-teal-700 dark:text-teal-300 font-bold bg-teal-50 dark:bg-teal-950/60 px-2 py-0.5 rounded-full border border-teal-200 dark:border-teal-800">
-              v1.0.0
+              v1.0
             </span>
           </button>
         </div>

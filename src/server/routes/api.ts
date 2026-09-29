@@ -40,6 +40,7 @@ apiRouter.get('/db-status', async (req, res) => {
 // Authentication Routes
 apiRouter.post('/auth/login', authController.login);
 apiRouter.post('/auth/register', authController.register);
+apiRouter.post('/auth/google-firebase', authController.googleFirebaseLogin);
 apiRouter.get('/auth/me', authMiddleware, authController.getMe);
 
 // Clinical Endpoints (Patient & Shared)

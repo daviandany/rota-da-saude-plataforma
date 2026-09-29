@@ -23,40 +23,8 @@ export interface RegisteredToken {
 
 export class NotificationService {
   private static tokens: Map<string, RegisteredToken> = new Map();
-  private static notifications: PushNotificationItem[] = [
-    {
-      id: 'notif-seed-1',
-      recipientId: 'u-patient-maria',
-      recipientRole: 'PATIENT',
-      title: '💊 Lembrete de Medicamento: Losartana 50mg',
-      body: 'Hora de tomar sua dose da manhã (08:00). Mantenha seu coração protegido!',
-      type: 'MEDICATION',
-      data: {
-        medicationName: 'Losartana',
-        dosage: '50mg',
-        scheduledTime: '08:00',
-      },
-      read: false,
-      sentAt: new Date(Date.now() - 3600000).toISOString(),
-    },
-    {
-      id: 'notif-seed-2',
-      recipientId: 'u-prof-carlos',
-      recipientRole: 'PROFESSIONAL',
-      title: '🚨 ALERTA CRÍTICO: Pressão Alta - Maria Silva',
-      body: 'Pressão registrada em 165/102 mmHg (Crítica). Paciente estratificada em Alto Risco cardiovascular.',
-      type: 'CRITICAL_READING',
-      data: {
-        patientId: 'pat-maria',
-        patientName: 'Maria Silva',
-        metric: 'PRESSURE',
-        value: '165/102 mmHg',
-        severity: 'CRITICO',
-      },
-      read: false,
-      sentAt: new Date(Date.now() - 7200000).toISOString(),
-    },
-  ];
+  // Notificações estritamente do usuário atual (sem mock de outros usuários)
+  private static notifications: PushNotificationItem[] = [];
 
   private static listeners: Set<(notif: PushNotificationItem) => void> = new Set();
 
@@ -218,11 +186,10 @@ export class NotificationService {
    * Retorna notificações filtradas pelo usuário / papel
    */
   static getNotifications(userId?: string, role?: string): PushNotificationItem[] {
+    if (!userId) return [];
     return this.notifications.filter((n) => {
-      if (!userId && !role) return true;
-      if (n.recipientRole === 'ALL') return true;
-      if (role && n.recipientRole === role) return true;
-      if (userId && (n.recipientId === userId || n.recipientId === 'all-doctors')) return true;
+      if (n.recipientId === userId) return true;
+      if (role === 'PROFESSIONAL' && n.recipientRole === 'PROFESSIONAL' && n.recipientId === 'all-doctors') return true;
       return false;
     });
   }

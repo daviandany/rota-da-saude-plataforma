@@ -8,7 +8,6 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { TopBar } from './components/common/TopBar';
-import { ArchModal } from './components/common/ArchModal';
 import { NotificationCenterModal } from './components/common/NotificationCenterModal';
 import { NotificationToast } from './components/common/NotificationToast';
 import { LoginScreen } from './components/auth/LoginScreen';
@@ -52,7 +51,6 @@ const MainApp: React.FC = () => {
   const { user, loading } = useAuth();
   const [viewMode, setViewMode] = useState<'web' | 'mobile'>('web');
   const [isMobileFrame, setIsMobileFrame] = useState(true);
-  const [isArchModalOpen, setIsArchModalOpen] = useState(false);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
 
   // Patient Navigation State (Mobile)
@@ -93,7 +91,6 @@ const MainApp: React.FC = () => {
         ) : (
           <WebLayout
             onSwitchToMobile={() => setViewMode('mobile')}
-            onOpenArchModal={() => setIsArchModalOpen(true)}
             onOpenNotificationModal={() => setIsNotificationModalOpen(true)}
           >
             {user.role === 'PATIENT' ? (
@@ -128,7 +125,6 @@ const MainApp: React.FC = () => {
             onToggleMobileFrame={() => setIsMobileFrame(!isMobileFrame)}
             viewMode={viewMode}
             onSelectViewMode={(mode) => setViewMode(mode)}
-            onOpenArchModal={() => setIsArchModalOpen(true)}
             onOpenNotificationModal={() => setIsNotificationModalOpen(true)}
           />
 
@@ -175,7 +171,6 @@ const MainApp: React.FC = () => {
                     {patientTab === 'mais' && (
                       <PatientMenu
                         onNavigateTab={(tab) => setPatientTab(tab)}
-                        onOpenArchModal={() => setIsArchModalOpen(true)}
                       />
                     )}
                   </div>
@@ -239,7 +234,6 @@ const MainApp: React.FC = () => {
                         {doctorTab === 'mais' && (
                           <DoctorMenu
                             onBack={() => setDoctorTab('inicio')}
-                            onOpenArchModal={() => setIsArchModalOpen(true)}
                           />
                         )}
                       </>
@@ -273,7 +267,6 @@ const MainApp: React.FC = () => {
       )}
 
       {/* Shared Modals */}
-      <ArchModal isOpen={isArchModalOpen} onClose={() => setIsArchModalOpen(false)} />
       <NotificationCenterModal
         isOpen={isNotificationModalOpen}
         onClose={() => setIsNotificationModalOpen(false)}

@@ -15,6 +15,9 @@ export interface User {
   name: string;
   role: UserRole;
   profileId: string;
+  avatarUrl?: string;
+  isGoogleAuth?: boolean;
+  firebaseUid?: string;
   profile?: any;
 }
 

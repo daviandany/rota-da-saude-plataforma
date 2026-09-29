@@ -9,7 +9,6 @@ interface TopBarProps {
   onToggleMobileFrame?: () => void;
   viewMode?: 'web' | 'mobile';
   onSelectViewMode?: (mode: 'web' | 'mobile') => void;
-  onOpenArchModal: () => void;
   onOpenNotificationModal: () => void;
 }
 
@@ -18,7 +17,6 @@ export const TopBar: React.FC<TopBarProps> = ({
   onToggleMobileFrame,
   viewMode = 'web',
   onSelectViewMode,
-  onOpenArchModal,
   onOpenNotificationModal,
 }) => {
   const { user, loginDemo, logout } = useAuth();
@@ -41,13 +39,9 @@ export const TopBar: React.FC<TopBarProps> = ({
             </div>
           </div>
 
-          <div className="hidden lg:flex items-center gap-2 pl-3 border-l border-slate-700 text-slate-400 text-[11px]">
+          <div className="hidden lg:flex items-center gap-2 pl-3 border-l border-slate-700 text-slate-400 text-xs">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>Node.js Scalable Backend</span>
-            <span className="text-slate-600">•</span>
-            <span>JWT Auth</span>
-            <span className="text-slate-600">•</span>
-            <span className="text-emerald-400 font-semibold">Supabase (PostgreSQL)</span>
+            <span>Atenção Primária à Saúde • SUS</span>
           </div>
         </div>
 
@@ -131,15 +125,6 @@ export const TopBar: React.FC<TopBarProps> = ({
               )}
             </button>
           )}
-
-          {/* Architecture / Docker / Supabase Modal Button */}
-          <button
-            onClick={onOpenArchModal}
-            className="px-2.5 py-1.5 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 text-emerald-200 border border-emerald-700/60 text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
-          >
-            <Database className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden sm:inline">Supabase & Docker</span>
-          </button>
 
           {/* Theme Mode Toggle Button */}
           <ThemeToggle />

@@ -49,8 +49,15 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     try {
       const res = await api.getNotifications();
       if (res && res.data) {
-        setNotifications(res.data);
-        setUnreadCount(res.unreadCount || 0);
+        // Filtra estritamente para o usuário ativo
+        const userOnly = res.data.filter((item: AppNotification) => {
+          if (item.recipientId === user.id) return true;
+          if (user.role === 'PROFESSIONAL' && (item.recipientRole === 'PROFESSIONAL' || item.recipientId === 'all-doctors')) return true;
+          if (user.role === 'PATIENT' && item.recipientRole === 'PATIENT') return true;
+          return false;
+        });
+        setNotifications(userOnly);
+        setUnreadCount(userOnly.filter((i: AppNotification) => !i.read).length);
       }
     } catch (e) {
       console.warn('Erro ao atualizar notificações:', e);
@@ -115,29 +122,9 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       setToken(deviceToken);
       await refreshNotifications();
 
-      // Feedback em toast visual e sonoro para o usuário
+      // Atualiza token e permissão silenciosamente sem criar toasts técnicos
       if (currentPerm === 'granted') {
-        setActiveToast({
-          id: 'toast-perm-' + Date.now(),
-          recipientId: user?.id || 'demo',
-          recipientRole: user?.role === 'PROFESSIONAL' ? 'PROFESSIONAL' : 'PATIENT',
-          title: 'Notificações Push Habilitadas',
-          body: 'Você receberá notificações nativas no seu dispositivo.',
-          type: 'GENERAL',
-          read: false,
-          sentAt: new Date().toISOString(),
-        });
-      } else {
-        setActiveToast({
-          id: 'toast-inapp-' + Date.now(),
-          recipientId: user?.id || 'demo',
-          recipientRole: user?.role === 'PROFESSIONAL' ? 'PROFESSIONAL' : 'PATIENT',
-          title: 'Notificações In-App Ativas',
-          body: 'Notificações nativas do navegador indisponíveis neste modo. Alertas sonoros e visuais ativos no app.',
-          type: 'GENERAL',
-          read: false,
-          sentAt: new Date().toISOString(),
-        });
+        console.info('[FCM] Notificações nativas habilitadas');
       }
     } catch (err: any) {
       console.info('[FCM] Status de inicialização push:', err);

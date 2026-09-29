@@ -52,6 +52,25 @@ export const authController = {
       return res.status(400).json({ success: false, error: err.message });
     }
   },
+
+  async googleFirebaseLogin(req: Request, res: Response) {
+    try {
+      const { uid, email, name, photoURL, role } = req.body;
+      if (!uid || !email) {
+        return res.status(400).json({ success: false, error: 'UID e e-mail Firebase Google são obrigatórios.' });
+      }
+      const result = await AuthService.loginWithFirebaseGoogle({
+        uid,
+        email,
+        name: name || email.split('@')[0],
+        photoURL,
+        role: role === 'PROFESSIONAL' ? 'PROFESSIONAL' : 'PATIENT',
+      });
+      return res.json({ success: true, ...result });
+    } catch (err: any) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  },
 };
 
 export const clinicalController = {

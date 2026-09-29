@@ -15,42 +15,138 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // FCM Device Tokens
-    match /fcm_tokens/{tokenId} {
-      allow get: if isSignedIn();
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // 1. User Profiles
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || resource.data.uid == request.auth.uid);
       allow list: if isSignedIn();
       allow create, update: if isSignedIn()
-        && request.resource.data.token is string
-        && request.resource.data.token.size() <= 512
-        && request.resource.data.userId is string
-        && request.resource.data.userId.size() <= 128;
-      allow delete: if isSignedIn();
-    }
-
-    // Notifications Feed
-    match /notifications/{notificationId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isSignedIn()
-        && request.resource.data.id is string
-        && request.resource.data.recipientId is string
-        && request.resource.data.title is string
-        && request.resource.data.body is string;
-      allow update: if isSignedIn()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
-      allow delete: if isSignedIn();
-    }
-
-    // Clinical Alerts
-    match /clinical_alerts/{alertId} {
-      allow get: if isSignedIn();
-      allow list: if isSignedIn();
-      allow create: if isSignedIn()
-        && request.resource.data.patientId is string
-        && request.resource.data.severity in ['CRITICO', 'ATENCAO', 'INFORMATIVO'];
-      allow update: if isSignedIn()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+        && request.auth.uid == userId
+        && incoming().uid == request.auth.uid
+        && incoming().email is string
+        && incoming().email.size() <= 255;
       allow delete: if false;
+    }
+
+    // 2. Patients (Dados e prontuários)
+    match /patients/{patientId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn()
+        && isValidId(patientId)
+        && incoming().name is string
+        && incoming().name.size() <= 200
+        && incoming().riskLevel in ['BAIXO', 'MODERADO', 'ALTO'];
+      allow update: if isSignedIn()
+        && isValidId(patientId)
+        && incoming().riskLevel in ['BAIXO', 'MODERADO', 'ALTO'];
+      allow delete: if false;
+    }
+
+    // 3. Registros de Pressão Arterial
+    match /blood_pressure_records/{recordId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn()
+        && isValidId(recordId)
+        && incoming().patientId is string
+        && incoming().patientId.size() <= 128
+        && incoming().systolic is number
+        && incoming().systolic > 30
+        && incoming().systolic < 350
+        && incoming().diastolic is number
+        && incoming().diastolic > 20
+        && incoming().diastolic < 250;
+      allow update: if isSignedIn() && isValidId(recordId);
+      allow delete: if false;
+    }
+
+    // 4. Registros de Glicemia Capilar
+    match /glucose_records/{recordId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn()
+        && isValidId(recordId)
+        && incoming().patientId is string
+        && incoming().patientId.size() <= 128
+        && incoming().glucoseValue is number
+        && incoming().glucoseValue > 10
+        && incoming().glucoseValue < 1200
+        && incoming().moment in ['EM_JEJUM', 'ANTES_ALMOCO', 'APOS_ALMOCO', 'ANTES_JANTAR', 'APOS_JANTAR', 'AO_DORMIR'];
+      allow update: if isSignedIn() && isValidId(recordId);
+      allow delete: if false;
+    }
+
+    // 5. Medicamentos Prescritos
+    match /medications/{medicationId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn()
+        && isValidId(medicationId)
+        && incoming().patientId is string
+        && incoming().name is string
+        && incoming().dosage is string
+        && incoming().status in ['ATIVO', 'SUSPENSO', 'CONCLUIDO'];
+      allow update: if isSignedIn()
+        && isValidId(medicationId)
+        && incoming().status in ['ATIVO', 'SUSPENSO', 'CONCLUIDO'];
+      allow delete: if false;
+    }
+
+    // 6. Consultas e Agendamentos
+    match /appointments/{appointmentId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn()
+        && isValidId(appointmentId)
+        && incoming().patientId is string
+        && incoming().appointmentType is string
+        && incoming().status in ['AGENDADA', 'REALIZADA', 'CANCELADA'];
+      allow update: if isSignedIn()
+        && isValidId(appointmentId)
+        && incoming().status in ['AGENDADA', 'REALIZADA', 'CANCELADA'];
+      allow delete: if false;
+    }
+
+    // 7. Alertas Clínicos
+    match /clinical_alerts/{alertId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn()
+        && isValidId(alertId)
+        && incoming().patientId is string
+        && incoming().severity in ['CRITICO', 'ATENCAO', 'INFORMATIVO'];
+      allow update: if isSignedIn()
+        && isValidId(alertId)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['status']);
+      allow delete: if false;
+    }
+
+    // 8. FCM Device Tokens
+    match /fcm_tokens/{tokenId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isSignedIn()
+        && isValidId(tokenId)
+        && incoming().token is string
+        && incoming().token.size() <= 512
+        && incoming().userId is string
+        && incoming().userId.size() <= 128;
+      allow delete: if isSignedIn();
+    }
+
+    // 9. Notifications Feed
+    match /notifications/{notificationId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn()
+        && isValidId(notificationId)
+        && incoming().recipientId is string
+        && incoming().title is string
+        && incoming().body is string;
+      allow update: if isSignedIn()
+        && isValidId(notificationId)
+        && incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+      allow delete: if isSignedIn();
     }
   }
 }

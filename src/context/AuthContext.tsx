@@ -1,14 +1,19 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, UserRole } from '../types';
 import { api } from '../services/api';
+import { signInWithGoogle, signOutFirebase, auth } from '../services/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { FirestoreClinicalService } from '../services/firestoreService';
 
 interface AuthContextType {
   user: User | null;
   token: string | null;
   loading: boolean;
+  isFirebaseConnected: boolean;
   login: (email: string, pass: string) => Promise<void>;
   loginDemo: (role: UserRole) => Promise<void>;
-  logout: () => void;
+  loginGoogle: (role: UserRole, emailHint?: string) => Promise<void>;
+  logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
@@ -18,6 +23,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [loading, setLoading] = useState<boolean>(true);
+  const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(true);
 
   const initAuth = async () => {
     const savedToken = localStorage.getItem('token');
@@ -50,6 +56,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     initAuth();
+
+    // Listen to Firebase Auth state
+    const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
+      if (fbUser) {
+        setIsFirebaseConnected(true);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const login = async (email: string, pass: string) => {
@@ -59,6 +74,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem('token', res.token);
       setToken(res.token);
       setUser(res.user);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loginGoogle = async (role: UserRole, emailHint?: string) => {
+    setLoading(true);
+    try {
+      // 1. Popup Google login + sync to Firestore users collection
+      const { firebaseUser } = await signInWithGoogle(
+        role === 'PROFESSIONAL' ? 'PROFESSIONAL' : 'PATIENT',
+        emailHint
+      );
+
+      // 2. Synchronize with backend session
+      const res = await api.loginGoogleFirebase({
+        uid: firebaseUser.uid,
+        email: firebaseUser.email || '',
+        name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuário Google',
+        photoURL: firebaseUser.photoURL || undefined,
+        role,
+      });
+
+      localStorage.setItem('token', res.token);
+      setToken(res.token);
+      setUser(res.user);
+      setIsFirebaseConnected(true);
+
+      // Sincroniza dados iniciais clínicos no Firestore se autenticado
+      if (FirestoreClinicalService.isAuthReady()) {
+        FirestoreClinicalService.seedFirestoreIfEmpty(res.user).catch((e) =>
+          console.warn('[Firestore] Seed background:', e)
+        );
+      }
+    } catch (err: any) {
+      console.error('[AuthContext] Erro no login com Google / Firebase:', err);
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -78,10 +130,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
     localStorage.removeItem('token');
     setToken(null);
     setUser(null);
+    await signOutFirebase();
   };
 
   const refreshUser = async () => {
@@ -99,8 +152,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         user,
         token,
         loading,
+        isFirebaseConnected,
         login,
         loginDemo,
+        loginGoogle,
         logout,
         refreshUser,
       }}

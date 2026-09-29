@@ -236,6 +236,22 @@ export class SupabaseAdapter implements IDatabase {
     };
   }
 
+  async createProfessional(professional: Professional): Promise<Professional> {
+    if (!this.client) return professional;
+    await this.client.from('professionals').insert({
+      id: professional.id,
+      user_id: professional.userId,
+      name: professional.name,
+      email: professional.email,
+      crm: professional.crm,
+      specialty: professional.specialty,
+      healthcare_unit: professional.healthcareUnit,
+      avatar_url: professional.avatarUrl,
+      created_at: professional.createdAt,
+    });
+    return professional;
+  }
+
   // Blood Pressure
   async getBloodPressureRecords(patientId: string): Promise<BloodPressureRecord[]> {
     if (!this.client) return [];

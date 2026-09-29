@@ -178,4 +178,110 @@ export class AuthService {
       profile: profileData,
     };
   }
+
+  static async loginWithFirebaseGoogle(payload: {
+    uid: string;
+    email: string;
+    name: string;
+    photoURL?: string;
+    role: UserRole;
+  }) {
+    const db = await getDatabase();
+    let user = await db.getUserByEmail(payload.email);
+
+    if (!user) {
+      const userId = 'u-google-' + payload.uid.slice(0, 16);
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(payload.uid + '-google-oauth', salt);
+
+      const newUser: User = {
+        id: userId,
+        email: payload.email,
+        passwordHash,
+        name: payload.name || payload.email.split('@')[0],
+        role: payload.role,
+        createdAt: new Date().toISOString(),
+      };
+
+      await db.createUser(newUser);
+      user = newUser;
+
+      let profileId = '';
+      if (payload.role === 'PATIENT') {
+        profileId = 'pat-' + Date.now();
+        await db.createPatient({
+          id: profileId,
+          userId,
+          name: payload.name || 'Paciente Google',
+          email: payload.email,
+          age: 55,
+          gender: 'Não especificado',
+          conditions: ['Hipertensão Arterial (HAS)', 'Diabetes Mellitus Tipo 2'],
+          riskLevel: 'MODERADO',
+          healthcareUnit: 'UBS Dr. Manoel de Abreu',
+          avatarUrl: payload.photoURL,
+          adherenceRate: 94,
+          phone: '(11) 98765-4321',
+          createdAt: new Date().toISOString(),
+        });
+      } else {
+        profileId = 'prof-' + Date.now();
+        await db.createProfessional({
+          id: profileId,
+          userId,
+          name: payload.name || 'Dr(a). Google',
+          email: payload.email,
+          crm: 'CRM ' + Math.floor(10000 + Math.random() * 89999) + '/SP',
+          specialty: 'Medicina de Família e Comunidade',
+          healthcareUnit: 'UBS Dr. Manoel de Abreu',
+          avatarUrl: payload.photoURL,
+          createdAt: new Date().toISOString(),
+        });
+      }
+    }
+
+    let profileId = '';
+    let profileData: any = null;
+
+    if (user.role === 'PATIENT') {
+      const patient = await db.getPatientByUserId(user.id);
+      if (patient) {
+        profileId = patient.id;
+        profileData = patient;
+      }
+    } else {
+      const professional = await db.getProfessionalByUserId(user.id);
+      if (professional) {
+        profileId = professional.id;
+        profileData = professional;
+      }
+    }
+
+    const tokenPayload: AuthenticatedUserPayload = {
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      profileId,
+    };
+
+    const token = jwt.sign(tokenPayload, config.jwtSecret as jwt.Secret, {
+      expiresIn: config.jwtExpiresIn as any,
+    });
+
+    return {
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        profileId,
+        avatarUrl: payload.photoURL || (profileData as any)?.avatarUrl,
+        firebaseUid: payload.uid,
+        isGoogleAuth: true,
+        profile: profileData,
+      },
+    };
+  }
 }

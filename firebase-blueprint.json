@@ -1,5 +1,385 @@
 {
   "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Perfil do usuário autenticado via Google no Firebase",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "ID exclusivo de autenticação Firebase do usuário",
+          "maxLength": 128
+        },
+        "email": {
+          "type": "string",
+          "description": "E-mail de autenticação Google do usuário",
+          "maxLength": 255
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Nome completo obtido da conta Google",
+          "maxLength": 200
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Foto de perfil do avatar da conta Google",
+          "maxLength": 1000
+        },
+        "role": {
+          "type": "string",
+          "description": "Papel do usuário no sistema (PATIENT ou PROFESSIONAL)",
+          "enum": ["PATIENT", "PROFESSIONAL"]
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Data ISO de criação do perfil"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Data ISO da última atualização do perfil"
+        }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Patient": {
+      "title": "Patient",
+      "description": "Dados cadastrais e clínicos do paciente monitorado pelo programa de Hipertensão e Diabetes",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Identificador único do paciente",
+          "maxLength": 128
+        },
+        "userId": {
+          "type": "string",
+          "description": "Identificador do usuário associado ao paciente",
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "description": "Nome completo do paciente",
+          "maxLength": 200
+        },
+        "email": {
+          "type": "string",
+          "description": "Endereço de e-mail do paciente",
+          "maxLength": 255
+        },
+        "age": {
+          "type": "number",
+          "description": "Idade em anos"
+        },
+        "gender": {
+          "type": "string",
+          "description": "Gênero do paciente",
+          "maxLength": 32
+        },
+        "riskLevel": {
+          "type": "string",
+          "description": "Classificação estratificada de risco cardiovascular e metabólico",
+          "enum": ["BAIXO", "MODERADO", "ALTO"]
+        },
+        "healthcareUnit": {
+          "type": "string",
+          "description": "Unidade Básica de Saúde de referência",
+          "maxLength": 200
+        },
+        "adherenceRate": {
+          "type": "number",
+          "description": "Taxa percentual de adesão aos medicamentos e monitoramento"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Telefone de contato para avisos e emergências",
+          "maxLength": 32
+        },
+        "latestBP": {
+          "type": "string",
+          "description": "Última aferição de pressão registrada",
+          "maxLength": 64
+        },
+        "latestGlucose": {
+          "type": "string",
+          "description": "Última aferição de glicemia registrada",
+          "maxLength": 64
+        },
+        "lastMeasuredAt": {
+          "type": "string",
+          "description": "Data ISO da última medição clínica"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Data ISO de inclusão do paciente"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Data ISO da última atualização cadastral"
+        }
+      },
+      "required": ["id", "userId", "name", "riskLevel"]
+    },
+    "BloodPressureRecord": {
+      "title": "BloodPressureRecord",
+      "description": "Registro clínico de aferição de pressão arterial sistólica e diastólica",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Identificador único do registro",
+          "maxLength": 128
+        },
+        "patientId": {
+          "type": "string",
+          "description": "ID do paciente associado à medição",
+          "maxLength": 128
+        },
+        "systolic": {
+          "type": "number",
+          "description": "Pressão arterial sistólica em mmHg"
+        },
+        "diastolic": {
+          "type": "number",
+          "description": "Pressão arterial diastólica em mmHg"
+        },
+        "pulse": {
+          "type": "number",
+          "description": "Frequência cardíaca (pulso) em bpm"
+        },
+        "recordedAt": {
+          "type": "string",
+          "description": "Data e hora ISO em que a medição ocorreu"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Observações e sintomas anotados pelo paciente",
+          "maxLength": 500
+        },
+        "isCritical": {
+          "type": "boolean",
+          "description": "Indica se os valores ultrapassam limites de risco de emergência"
+        },
+        "statusText": {
+          "type": "string",
+          "description": "Classificação textual do resultado (Normal, Atenção, Crítica)",
+          "maxLength": 64
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Data ISO de inserção no sistema"
+        }
+      },
+      "required": ["id", "patientId", "systolic", "diastolic", "recordedAt"]
+    },
+    "GlucoseRecord": {
+      "title": "GlucoseRecord",
+      "description": "Registro de glicemia capilar com indicação do momento de medição",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Identificador único do registro",
+          "maxLength": 128
+        },
+        "patientId": {
+          "type": "string",
+          "description": "ID do paciente associado",
+          "maxLength": 128
+        },
+        "glucoseValue": {
+          "type": "number",
+          "description": "Valor de glicemia capilar em mg/dL"
+        },
+        "moment": {
+          "type": "string",
+          "description": "Momento em relação às refeições",
+          "enum": ["EM_JEJUM", "ANTES_ALMOCO", "APOS_ALMOCO", "ANTES_JANTAR", "APOS_JANTAR", "AO_DORMIR"]
+        },
+        "recordedAt": {
+          "type": "string",
+          "description": "Data e hora ISO da medição"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Observações complementares",
+          "maxLength": 500
+        },
+        "isCritical": {
+          "type": "boolean",
+          "description": "Indica se representa hipoglicemia severa ou hiperglicemia de alerta"
+        },
+        "statusText": {
+          "type": "string",
+          "description": "Classificação do valor medido",
+          "maxLength": 64
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Data ISO de inserção no sistema"
+        }
+      },
+      "required": ["id", "patientId", "glucoseValue", "moment", "recordedAt"]
+    },
+    "Medication": {
+      "title": "Medication",
+      "description": "Plano terapêutico medicamentoso prescrito para o paciente",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Identificador do medicamento",
+          "maxLength": 128
+        },
+        "patientId": {
+          "type": "string",
+          "description": "ID do paciente",
+          "maxLength": 128
+        },
+        "name": {
+          "type": "string",
+          "description": "Nome comercial ou princípio ativo da RENAME",
+          "maxLength": 150
+        },
+        "dosage": {
+          "type": "string",
+          "description": "Dosagem prescrita (ex: 50mg)",
+          "maxLength": 64
+        },
+        "frequency": {
+          "type": "string",
+          "description": "Frequência de administração (ex: 1x ao dia pela manhã)",
+          "maxLength": 100
+        },
+        "status": {
+          "type": "string",
+          "description": "Status da medicação",
+          "enum": ["ATIVO", "SUSPENSO", "CONCLUIDO"]
+        },
+        "notes": {
+          "type": "string",
+          "description": "Instruções médicas de tomada e precauções",
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Data ISO do cadastro"
+        }
+      },
+      "required": ["id", "patientId", "name", "dosage", "status"]
+    },
+    "Appointment": {
+      "title": "Appointment",
+      "description": "Agendamento de consulta médica, de enfermagem ou grupo Hiperdia",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Identificador único da consulta",
+          "maxLength": 128
+        },
+        "patientId": {
+          "type": "string",
+          "description": "ID do paciente",
+          "maxLength": 128
+        },
+        "professionalId": {
+          "type": "string",
+          "description": "ID do profissional de saúde",
+          "maxLength": 128
+        },
+        "patientName": {
+          "type": "string",
+          "description": "Nome do paciente",
+          "maxLength": 200
+        },
+        "appointmentType": {
+          "type": "string",
+          "description": "Tipo de consulta (ex: Consulta de rotina, Avaliação de Hipertensão)",
+          "maxLength": 100
+        },
+        "scheduledFor": {
+          "type": "string",
+          "description": "Data e hora ISO agendada para a consulta"
+        },
+        "clinicName": {
+          "type": "string",
+          "description": "Nome da UBS ou unidade de saúde",
+          "maxLength": 200
+        },
+        "doctorName": {
+          "type": "string",
+          "description": "Nome do profissional responsável",
+          "maxLength": 200
+        },
+        "status": {
+          "type": "string",
+          "description": "Situação do agendamento",
+          "enum": ["AGENDADA", "REALIZADA", "CANCELADA"]
+        },
+        "notes": {
+          "type": "string",
+          "description": "Orientações pré-consulta (ex: jejum, levar receitas)",
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Data ISO do agendamento"
+        }
+      },
+      "required": ["id", "patientId", "appointmentType", "scheduledFor", "status"]
+    },
+    "ClinicalAlert": {
+      "title": "ClinicalAlert",
+      "description": "Alerta clínico de hipertensão ou diabetes para monitoramento médico",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "ID do alerta",
+          "maxLength": 128
+        },
+        "patientId": {
+          "type": "string",
+          "description": "ID do paciente",
+          "maxLength": 128
+        },
+        "patientName": {
+          "type": "string",
+          "description": "Nome do paciente",
+          "maxLength": 200
+        },
+        "severity": {
+          "type": "string",
+          "description": "Gravidade do alerta",
+          "enum": ["CRITICO", "ATENCAO", "INFORMATIVO"]
+        },
+        "title": {
+          "type": "string",
+          "description": "Título explicativo do alerta",
+          "maxLength": 255
+        },
+        "message": {
+          "type": "string",
+          "description": "Descrição clínica da ocorrência",
+          "maxLength": 1000
+        },
+        "metricType": {
+          "type": "string",
+          "description": "Tipo de parâmetro monitorado",
+          "enum": ["PRESSURE", "GLUCOSE", "ADHERENCE"]
+        },
+        "status": {
+          "type": "string",
+          "description": "Estado do alerta no fluxo de trabalho clínico",
+          "enum": ["PENDENTE", "RESOLVIDO"]
+        },
+        "triggeredAt": {
+          "type": "string",
+          "description": "Data ISO de disparo do alerta"
+        }
+      },
+      "required": ["id", "patientId", "severity", "title", "status", "triggeredAt"]
+    },
     "FCMToken": {
       "title": "FCMToken",
       "description": "Token de dispositivo registrado para recebimento de notificações push via Firebase Cloud Messaging",
@@ -77,55 +457,37 @@
         }
       },
       "required": ["id", "recipientId", "title", "body", "type", "sentAt"]
-    },
-    "ClinicalAlert": {
-      "title": "ClinicalAlert",
-      "description": "Alerta clínico de hipertensão ou diabetes para monitoramento médico",
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "ID do alerta",
-          "maxLength": 128
-        },
-        "patientId": {
-          "type": "string",
-          "description": "ID do paciente",
-          "maxLength": 128
-        },
-        "patientName": {
-          "type": "string",
-          "description": "Nome do paciente",
-          "maxLength": 200
-        },
-        "severity": {
-          "type": "string",
-          "enum": ["CRITICO", "ATENCAO", "INFORMATIVO"]
-        },
-        "title": {
-          "type": "string",
-          "maxLength": 255
-        },
-        "message": {
-          "type": "string",
-          "maxLength": 1000
-        },
-        "metricType": {
-          "type": "string",
-          "enum": ["PRESSURE", "GLUCOSE", "ADHERENCE"]
-        },
-        "status": {
-          "type": "string",
-          "enum": ["PENDENTE", "RESOLVIDO"]
-        },
-        "triggeredAt": {
-          "type": "string"
-        }
-      },
-      "required": ["id", "patientId", "severity", "title", "status", "triggeredAt"]
     }
   },
   "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Perfis dos usuários e profissionais cadastrados no Firebase"
+    },
+    "/patients/{patientId}": {
+      "schema": "Patient",
+      "description": "Registros completos e prontuários de pacientes hipertensos e diabéticos"
+    },
+    "/blood_pressure_records/{recordId}": {
+      "schema": "BloodPressureRecord",
+      "description": "Aferições de pressão arterial persistidas para o histórico clínico"
+    },
+    "/glucose_records/{recordId}": {
+      "schema": "GlucoseRecord",
+      "description": "Aferições de glicemia capilar persistidas com momentos e alertas"
+    },
+    "/medications/{medicationId}": {
+      "schema": "Medication",
+      "description": "Prescrições e planos medicamentosos dos pacientes"
+    },
+    "/appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "Consultas agendadas na Atenção Primária à Saúde"
+    },
+    "/clinical_alerts/{alertId}": {
+      "schema": "ClinicalAlert",
+      "description": "Alertas clínicos de risco imediato monitorados pela equipe médica"
+    },
     "/fcm_tokens/{tokenId}": {
       "schema": "FCMToken",
       "description": "Tokens de registro FCM dos dispositivos para envio de push"
@@ -133,10 +495,6 @@
     "/notifications/{notificationId}": {
       "schema": "NotificationItem",
       "description": "Histórico de notificações push enviadas aos pacientes e profissionais"
-    },
-    "/clinical_alerts/{alertId}": {
-      "schema": "ClinicalAlert",
-      "description": "Alertas clínicos de risco imediato monitorados pela equipe médica"
     }
   }
 }
