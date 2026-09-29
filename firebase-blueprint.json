@@ -1,0 +1,142 @@
+{
+  "entities": {
+    "FCMToken": {
+      "title": "FCMToken",
+      "description": "Token de dispositivo registrado para recebimento de notificações push via Firebase Cloud Messaging",
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string",
+          "description": "FCM Device Registration Token",
+          "maxLength": 512
+        },
+        "userId": {
+          "type": "string",
+          "description": "Identificador do usuário no sistema",
+          "maxLength": 128
+        },
+        "role": {
+          "type": "string",
+          "description": "Papel do usuário (PATIENT ou PROFESSIONAL)",
+          "enum": ["PATIENT", "PROFESSIONAL"]
+        },
+        "platform": {
+          "type": "string",
+          "description": "Plataforma do cliente (web, android, ios)",
+          "maxLength": 32
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Data ISO da última atualização do token"
+        }
+      },
+      "required": ["token", "userId", "role"]
+    },
+    "NotificationItem": {
+      "title": "NotificationItem",
+      "description": "Notificação push enviada para o usuário (lembrete de medicamento ou alerta crítico)",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "ID único da notificação",
+          "maxLength": 128
+        },
+        "recipientId": {
+          "type": "string",
+          "description": "ID do usuário destinatário",
+          "maxLength": 128
+        },
+        "recipientRole": {
+          "type": "string",
+          "description": "Papel do destinatário (PATIENT ou PROFESSIONAL)",
+          "enum": ["PATIENT", "PROFESSIONAL"]
+        },
+        "title": {
+          "type": "string",
+          "description": "Título da notificação push",
+          "maxLength": 200
+        },
+        "body": {
+          "type": "string",
+          "description": "Mensagem detalhada da notificação",
+          "maxLength": 1000
+        },
+        "type": {
+          "type": "string",
+          "description": "Tipo de notificação clínica",
+          "enum": ["MEDICATION", "CRITICAL_READING", "APPOINTMENT", "GENERAL"]
+        },
+        "read": {
+          "type": "boolean",
+          "description": "Status de leitura pelo usuário"
+        },
+        "sentAt": {
+          "type": "string",
+          "description": "Data ISO do envio da notificação"
+        }
+      },
+      "required": ["id", "recipientId", "title", "body", "type", "sentAt"]
+    },
+    "ClinicalAlert": {
+      "title": "ClinicalAlert",
+      "description": "Alerta clínico de hipertensão ou diabetes para monitoramento médico",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "ID do alerta",
+          "maxLength": 128
+        },
+        "patientId": {
+          "type": "string",
+          "description": "ID do paciente",
+          "maxLength": 128
+        },
+        "patientName": {
+          "type": "string",
+          "description": "Nome do paciente",
+          "maxLength": 200
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["CRITICO", "ATENCAO", "INFORMATIVO"]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 255
+        },
+        "message": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "metricType": {
+          "type": "string",
+          "enum": ["PRESSURE", "GLUCOSE", "ADHERENCE"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["PENDENTE", "RESOLVIDO"]
+        },
+        "triggeredAt": {
+          "type": "string"
+        }
+      },
+      "required": ["id", "patientId", "severity", "title", "status", "triggeredAt"]
+    }
+  },
+  "firestore": {
+    "/fcm_tokens/{tokenId}": {
+      "schema": "FCMToken",
+      "description": "Tokens de registro FCM dos dispositivos para envio de push"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "NotificationItem",
+      "description": "Histórico de notificações push enviadas aos pacientes e profissionais"
+    },
+    "/clinical_alerts/{alertId}": {
+      "schema": "ClinicalAlert",
+      "description": "Alertas clínicos de risco imediato monitorados pela equipe médica"
+    }
+  }
+}

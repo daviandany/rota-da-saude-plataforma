@@ -1,0 +1,56 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // FCM Device Tokens
+    match /fcm_tokens/{tokenId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create, update: if isSignedIn()
+        && request.resource.data.token is string
+        && request.resource.data.token.size() <= 512
+        && request.resource.data.userId is string
+        && request.resource.data.userId.size() <= 128;
+      allow delete: if isSignedIn();
+    }
+
+    // Notifications Feed
+    match /notifications/{notificationId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.id is string
+        && request.resource.data.recipientId is string
+        && request.resource.data.title is string
+        && request.resource.data.body is string;
+      allow update: if isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+      allow delete: if isSignedIn();
+    }
+
+    // Clinical Alerts
+    match /clinical_alerts/{alertId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.patientId is string
+        && request.resource.data.severity in ['CRITICO', 'ATENCAO', 'INFORMATIVO'];
+      allow update: if isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      allow delete: if false;
+    }
+  }
+}

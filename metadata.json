@@ -1,0 +1,6 @@
+{
+  "name": "Rota da Saúde - Hipertensão e Diabetes",
+  "description": "Plataforma integrada de monitoramento e gestão clínica de Hipertensão Arterial e Diabetes Mellitus com portal do paciente e do profissional de saúde, autenticação JWT e suporte a PostgreSQL.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
