@@ -10,9 +10,20 @@ interface AuthContextType {
   token: string | null;
   loading: boolean;
   isFirebaseConnected: boolean;
-  login: (email: string, pass: string) => Promise<void>;
+  login: (email: string, pass: string, name?: string, role?: UserRole) => Promise<void>;
+  register: (payload: {
+    name: string;
+    email: string;
+    password: string;
+    role: UserRole;
+    age?: number;
+    gender?: string;
+    crm?: string;
+    conditions?: string[];
+  }) => Promise<void>;
   loginDemo: (role: UserRole) => Promise<void>;
   loginGoogle: (role: UserRole, emailHint?: string) => Promise<void>;
+  updateUserProfile: (data: any) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -28,12 +39,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const initAuth = async () => {
     const savedToken = localStorage.getItem('token');
     if (!savedToken) {
-      // Auto-login as Maria Silva by default for instant delight if first visit
-      try {
-        await loginDemo('PATIENT');
-      } catch (e) {
-        setLoading(false);
-      }
+      setLoading(false);
       return;
     }
 
@@ -45,10 +51,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.removeItem('token');
       setToken(null);
       setUser(null);
-      // fallback to demo patient
-      try {
-        await loginDemo('PATIENT');
-      } catch (_) {}
     } finally {
       setLoading(false);
     }
@@ -67,10 +69,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, []);
 
-  const login = async (email: string, pass: string) => {
+  const login = async (email: string, pass: string, name?: string, role?: UserRole) => {
     setLoading(true);
     try {
-      const res = await api.login(email, pass);
+      const res = await api.login(email, pass, name, role);
+      localStorage.setItem('token', res.token);
+      setToken(res.token);
+      setUser(res.user);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const register = async (payload: {
+    name: string;
+    email: string;
+    password: string;
+    role: UserRole;
+    age?: number;
+    gender?: string;
+    crm?: string;
+    conditions?: string[];
+  }) => {
+    setLoading(true);
+    try {
+      const res = await api.register(payload);
       localStorage.setItem('token', res.token);
       setToken(res.token);
       setUser(res.user);
@@ -146,6 +169,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateUserProfile = async (data: any) => {
+    setLoading(true);
+    try {
+      const res = await api.updateProfile(data);
+      setUser(res.user);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -154,8 +187,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         isFirebaseConnected,
         login,
+        register,
         loginDemo,
         loginGoogle,
+        updateUserProfile,
         logout,
         refreshUser,
       }}

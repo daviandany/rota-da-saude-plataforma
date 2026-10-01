@@ -42,6 +42,10 @@ apiRouter.post('/auth/login', authController.login);
 apiRouter.post('/auth/register', authController.register);
 apiRouter.post('/auth/google-firebase', authController.googleFirebaseLogin);
 apiRouter.get('/auth/me', authMiddleware, authController.getMe);
+apiRouter.put('/auth/profile', authMiddleware, authController.updateProfile);
+apiRouter.post('/auth/forgot-password', authController.forgotPassword);
+apiRouter.post('/auth/verify-reset-token', authController.verifyResetToken);
+apiRouter.post('/auth/reset-password', authController.resetPassword);
 
 // Clinical Endpoints (Patient & Shared)
 apiRouter.get('/clinical/summary', authMiddleware, clinicalController.getSummary);

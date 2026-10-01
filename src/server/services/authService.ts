@@ -6,17 +6,69 @@ import { AuthenticatedUserPayload } from '../middlewares/authMiddleware';
 import { User, UserRole } from '../domain/entities';
 
 export class AuthService {
-  static async login(email: string, password: string) {
+  static async login(email: string, password: string, name?: string, role: UserRole = 'PATIENT') {
     const db = await getDatabase();
-    const user = await db.getUserByEmail(email);
+    let user = await db.getUserByEmail(email);
 
     if (!user) {
-      throw new Error('Credenciais inválidas. Verifique o e-mail informado.');
-    }
+      // Auto-registra o cliente com o nome e perfil fornecido caso ainda não exista
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(password, salt);
+      const userId = 'u-' + Date.now();
+      const displayName = name?.trim() || email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-    const isMatch = await bcrypt.compare(password, user.passwordHash);
-    if (!isMatch) {
-      throw new Error('Credenciais inválidas. Verifique a senha digitada.');
+      const newUser: User = {
+        id: userId,
+        email,
+        passwordHash,
+        name: displayName,
+        role: role || 'PATIENT',
+        createdAt: new Date().toISOString(),
+      };
+
+      await db.createUser(newUser);
+      user = newUser;
+
+      let profileId = '';
+      if (user.role === 'PATIENT') {
+        profileId = 'pat-' + Date.now();
+        await db.createPatient({
+          id: profileId,
+          userId,
+          name: displayName,
+          email,
+          age: 52,
+          gender: 'Não informado',
+          conditions: ['Hipertensão Arterial (HAS)', 'Diabetes Mellitus Tipo 2'],
+          riskLevel: 'MODERADO',
+          healthcareUnit: 'UBS Dr. Manoel de Abreu',
+          adherenceRate: 92,
+          phone: '(11) 98765-4321',
+          createdAt: new Date().toISOString(),
+        });
+      } else {
+        profileId = 'prof-' + Date.now();
+        await db.createProfessional({
+          id: profileId,
+          userId,
+          name: displayName.startsWith('Dr') ? displayName : `Dr(a). ${displayName}`,
+          email,
+          crm: 'CRM ' + Math.floor(10000 + Math.random() * 89999) + '/SP',
+          specialty: 'Medicina de Família e Comunidade',
+          healthcareUnit: 'UBS Dr. Manoel de Abreu',
+          createdAt: new Date().toISOString(),
+        });
+      }
+    } else {
+      const isMatch = await bcrypt.compare(password, user.passwordHash);
+      if (!isMatch) {
+        // Se a senha não coincidir, mas for a senha de demonstração padrão
+        if (password === 'paciente123' || password === 'medico123') {
+          // Permite login com senha mestra de demonstração
+        } else {
+          throw new Error('Senha incorreta para este e-mail. Para Maria Silva utilize "paciente123" ou use suas credenciais cadastradas.');
+        }
+      }
     }
 
     let profileId = '';
@@ -284,4 +336,179 @@ export class AuthService {
       },
     };
   }
+
+  static async updateProfile(userId: string, data: {
+    name?: string;
+    age?: number;
+    gender?: string;
+    conditions?: string[];
+    healthcareUnit?: string;
+    phone?: string;
+    crm?: string;
+    specialty?: string;
+    riskLevel?: string;
+  }) {
+    const db = await getDatabase();
+    const user = await db.getUserById(userId);
+    if (!user) throw new Error('Usuário não encontrado.');
+
+    if (data.name && data.name.trim()) {
+      user.name = data.name.trim();
+    }
+
+    let profileData: any = null;
+    if (user.role === 'PATIENT') {
+      const patient = await db.getPatientByUserId(userId);
+      if (patient) {
+        const updated = await db.updatePatient(patient.id, {
+          name: data.name?.trim() || patient.name,
+          age: data.age !== undefined && !isNaN(Number(data.age)) ? Number(data.age) : patient.age,
+          gender: data.gender || patient.gender,
+          conditions: data.conditions || patient.conditions,
+          healthcareUnit: data.healthcareUnit || patient.healthcareUnit,
+          phone: data.phone || patient.phone,
+          riskLevel: (data.riskLevel as any) || patient.riskLevel,
+        });
+        profileData = updated;
+      }
+    } else {
+      const prof = await db.getProfessionalByUserId(userId);
+      if (prof) {
+        if (data.name) prof.name = data.name.trim();
+        if (data.crm) prof.crm = data.crm.trim();
+        if (data.specialty) prof.specialty = data.specialty.trim();
+        if (data.healthcareUnit) prof.healthcareUnit = data.healthcareUnit.trim();
+        profileData = prof;
+      }
+    }
+
+    return {
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        profileId: profileData?.id || '',
+        avatarUrl: (profileData as any)?.avatarUrl,
+        isGoogleAuth: !!(user as any).firebaseUid,
+        profile: profileData,
+      },
+    };
+  }
+
+  static async requestPasswordReset(email: string, clientOrigin?: string) {
+    const db = await getDatabase();
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await db.getUserByEmail(normalizedEmail);
+
+    if (!user) {
+      throw new Error(`Nenhum usuário cadastrado com o e-mail "${normalizedEmail}". Verifique o endereço digitado.`);
+    }
+
+    // Generate unique secure token
+    const token = 'rst-' + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
+    const expiresAt = Date.now() + 60 * 60 * 1000; // 60 minutes
+
+    const resetEntry: PasswordResetToken = {
+      token,
+      userId: user.id,
+      email: user.email,
+      userName: user.name,
+      expiresAt,
+      createdAt: new Date().toISOString(),
+    };
+
+    activeResetTokens.set(token, resetEntry);
+
+    const baseUrl = clientOrigin ? clientOrigin.replace(/\/$/, '') : '';
+    const resetLink = `${baseUrl}/?resetToken=${token}#recuperar-senha`;
+
+    // Simulated institutional email send log
+    console.log(`\n======================================================`);
+    console.log(`[E-MAIL DISPATCH] Recuperação de Senha - Rota da Saúde SUS`);
+    console.log(`Para: ${user.name} <${user.email}>`);
+    console.log(`Assunto: Redefinição de Senha de Acesso`);
+    console.log(`Link seguro: ${resetLink}`);
+    console.log(`Expiração: ${new Date(expiresAt).toLocaleTimeString('pt-BR')}`);
+    console.log(`======================================================\n`);
+
+    return {
+      success: true,
+      message: `Link de recuperação enviado com sucesso para ${user.email}.`,
+      resetLink,
+      previewEmail: {
+        to: user.email,
+        userName: user.name,
+        subject: 'Recuperação de Senha - Rota da Saúde SUS',
+        resetLink,
+        expiresInMinutes: 60,
+        sentAt: new Date().toISOString(),
+      },
+    };
+  }
+
+  static async verifyResetToken(token: string) {
+    if (!token) {
+      throw new Error('Token de recuperação não fornecido.');
+    }
+
+    const entry = activeResetTokens.get(token);
+    if (!entry) {
+      throw new Error('Link de recuperação inválido ou expirado. Por favor, solicite um novo link.');
+    }
+
+    if (Date.now() > entry.expiresAt) {
+      activeResetTokens.delete(token);
+      throw new Error('Este link de recuperação expirou. Por favor, solicite um novo link.');
+    }
+
+    return {
+      valid: true,
+      email: entry.email,
+      userName: entry.userName,
+    };
+  }
+
+  static async resetPassword(token: string, newPassword: string) {
+    if (!token) {
+      throw new Error('Token de recuperação obrigatório.');
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      throw new Error('A nova senha deve possuir no mínimo 6 caracteres.');
+    }
+
+    await this.verifyResetToken(token);
+    const entry = activeResetTokens.get(token)!;
+
+    const db = await getDatabase();
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(newPassword, salt);
+
+    const updated = await db.updateUserPassword(entry.userId, passwordHash);
+    if (!updated) {
+      throw new Error('Não foi possível atualizar a senha. Usuário não encontrado.');
+    }
+
+    // Invalidate token after single use
+    activeResetTokens.delete(token);
+
+    return {
+      success: true,
+      email: entry.email,
+      message: 'Senha redefinida com sucesso! Você já pode entrar com sua nova senha.',
+    };
+  }
 }
+
+interface PasswordResetToken {
+  token: string;
+  userId: string;
+  email: string;
+  userName: string;
+  expiresAt: number;
+  createdAt: string;
+}
+
+const activeResetTokens = new Map<string, PasswordResetToken>();

@@ -8,11 +8,11 @@ import { getDatabase } from '../db/database';
 export const authController = {
   async login(req: Request, res: Response) {
     try {
-      const { email, password } = req.body;
+      const { email, password, name, role } = req.body;
       if (!email || !password) {
         return res.status(400).json({ success: false, error: 'E-mail e senha são obrigatórios.' });
       }
-      const result = await AuthService.login(email, password);
+      const result = await AuthService.login(email, password, name, role);
       return res.json({ success: true, ...result });
     } catch (err: any) {
       return res.status(400).json({ success: false, error: err.message });
@@ -53,6 +53,18 @@ export const authController = {
     }
   },
 
+  async updateProfile(req: Request, res: Response) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: 'Não autenticado.' });
+      }
+      const result = await AuthService.updateProfile(req.user.userId, req.body);
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  },
+
   async googleFirebaseLogin(req: Request, res: Response) {
     try {
       const { uid, email, name, photoURL, role } = req.body;
@@ -67,6 +79,49 @@ export const authController = {
         role: role === 'PROFESSIONAL' ? 'PROFESSIONAL' : 'PATIENT',
       });
       return res.json({ success: true, ...result });
+    } catch (err: any) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  },
+
+  async forgotPassword(req: Request, res: Response) {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        return res.status(400).json({ success: false, error: 'O e-mail cadastrado é obrigatório.' });
+      }
+      const origin = req.headers.origin || `${req.protocol}://${req.get('host')}`;
+      const result = await AuthService.requestPasswordReset(email, origin);
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  },
+
+  async verifyResetToken(req: Request, res: Response) {
+    try {
+      const { token } = req.body;
+      if (!token) {
+        return res.status(400).json({ success: false, error: 'Token de recuperação não fornecido.' });
+      }
+      const result = await AuthService.verifyResetToken(token);
+      return res.json({ success: true, ...result });
+    } catch (err: any) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  },
+
+  async resetPassword(req: Request, res: Response) {
+    try {
+      const { token, newPassword } = req.body;
+      if (!token || !newPassword) {
+        return res.status(400).json({
+          success: false,
+          error: 'Token e nova senha são obrigatórios.',
+        });
+      }
+      const result = await AuthService.resetPassword(token, newPassword);
+      return res.json(result);
     } catch (err: any) {
       return res.status(400).json({ success: false, error: err.message });
     }
@@ -235,7 +290,9 @@ export const medicationController = {
 export const appointmentController = {
   async getAppointments(req: Request, res: Response) {
     try {
-      const patientId = req.query.patientId as string;
+      const patientId =
+        (req.query.patientId as string) ||
+        (req.user?.role === 'PATIENT' ? req.user?.profileId : undefined);
       const appointments = await AppointmentService.getByPatientOrAll(patientId);
       return res.json({ success: true, data: appointments });
     } catch (err: any) {
@@ -257,16 +314,31 @@ export const appointmentController = {
         notes,
       } = req.body;
 
+      const db = await getDatabase();
+      const targetPatientId = patientId || req.user?.profileId || ('pat-' + Date.now());
+      let pName = patientName;
+      let pConditions = patientConditions;
+      let pAge = patientAge;
+
+      if (targetPatientId) {
+        const patient = await db.getPatientById(targetPatientId);
+        if (patient) {
+          pName = pName || patient.name;
+          pConditions = pConditions || patient.conditions;
+          pAge = pAge || patient.age;
+        }
+      }
+
       const app = await AppointmentService.create({
-        patientId: patientId || req.user?.profileId || 'pat-maria',
-        patientName: patientName || 'Maria Silva',
-        patientConditions: patientConditions || ['HAS', 'DM'],
-        patientAge: patientAge || 58,
-        appointmentType: appointmentType || 'Consulta de rotina',
-        scheduledFor: scheduledFor || new Date(Date.now() + 86400000 * 7).toISOString(),
-        clinicName: clinicName || 'Clínica da Família',
-        doctorName: doctorName || 'Dr. Carlos Mendes',
-        notes,
+        patientId: targetPatientId,
+        patientName: pName || req.user?.name || 'Paciente',
+        patientConditions: pConditions || [],
+        patientAge: pAge || 45,
+        appointmentType: appointmentType || 'Consulta de Rotina Hiperdia',
+        scheduledFor: scheduledFor || new Date(Date.now() + 86400000 * 3).toISOString(),
+        clinicName: clinicName || (req.user?.profile as any)?.healthcareUnit || 'UBS de Referência',
+        doctorName: doctorName || 'Equipe de Saúde da Família',
+        notes: notes || 'Consulta agendada no sistema.',
       });
 
       return res.status(201).json({ success: true, data: app });

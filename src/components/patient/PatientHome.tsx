@@ -98,12 +98,12 @@ export const PatientHome: React.FC<PatientHomeProps> = ({
               <Heart className="w-4 h-4 text-teal-600 dark:text-teal-400 group-hover:scale-110 transition fill-teal-600/20" />
             </div>
             <div className="text-xl font-black text-slate-800 dark:text-white tracking-tight">
-              {summary ? `${summary.latestBP.systolic}/${summary.latestBP.diastolic}` : '120/80'}
+              {summary?.latestBP ? `${summary.latestBP.systolic}/${summary.latestBP.diastolic}` : 'Sem registro'}
             </div>
             <div className="text-[10px] text-slate-400 font-medium">mmHg</div>
             <div className="mt-2">
               <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/80">
-                {summary?.latestBP.statusText || 'Normal'}
+                {summary?.latestBP?.statusText || 'Pendente'}
               </span>
             </div>
           </div>
@@ -118,12 +118,12 @@ export const PatientHome: React.FC<PatientHomeProps> = ({
               <Droplet className="w-4 h-4 text-sky-600 dark:text-sky-400 group-hover:scale-110 transition fill-sky-600/20" />
             </div>
             <div className="text-xl font-black text-slate-800 dark:text-white tracking-tight">
-              {summary ? summary.latestGlucose.value : '98'}
+              {summary?.latestGlucose ? summary.latestGlucose.value : 'Sem registro'}
             </div>
             <div className="text-[10px] text-slate-400 font-medium">mg/dL</div>
             <div className="mt-2">
               <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/80">
-                {summary?.latestGlucose.statusText || 'Normal'}
+                {summary?.latestGlucose?.statusText || 'Pendente'}
               </span>
             </div>
           </div>
@@ -140,11 +140,11 @@ export const PatientHome: React.FC<PatientHomeProps> = ({
               Próximo medicamento
             </div>
             <div className="font-bold text-xs text-slate-900 dark:text-white line-clamp-1">
-              {summary?.nextMedication.name || 'Losartana'} {summary?.nextMedication.dosage || '50mg'}
+              {summary?.nextMedication ? `${summary.nextMedication.name} ${summary.nextMedication.dosage}` : 'Nenhum medicamento'}
             </div>
             <div className="text-xs text-teal-700 dark:text-teal-400 font-semibold mt-1 flex items-center gap-1">
               <Clock className="w-3 h-3 text-teal-600 dark:text-teal-400" />
-              <span>{summary?.nextMedication.time || '08:00'}</span>
+              <span>{summary?.nextMedication?.time || '--:--'}</span>
             </div>
           </div>
 
@@ -157,12 +157,12 @@ export const PatientHome: React.FC<PatientHomeProps> = ({
               Próxima consulta
             </div>
             <div className="font-bold text-xs text-slate-900 dark:text-white">
-              {summary?.nextAppointment.date
+              {summary?.nextAppointment?.date
                 ? new Date(summary.nextAppointment.date).toLocaleDateString('pt-BR')
-                : '22/05/2025'}
+                : 'Sem consultas agendadas'}
             </div>
             <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate mt-1">
-              {summary?.nextAppointment.clinic || 'Clínica da Família'}
+              {summary?.nextAppointment?.clinic || 'UBS de Referência'}
             </div>
           </div>
         </div>

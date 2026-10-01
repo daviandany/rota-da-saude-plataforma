@@ -91,6 +91,15 @@ export class SupabaseAdapter implements IDatabase {
     return user;
   }
 
+  async updateUserPassword(userId: string, passwordHash: string): Promise<boolean> {
+    if (!this.client) return false;
+    const { error } = await this.client
+      .from('users')
+      .update({ password_hash: passwordHash })
+      .eq('id', userId);
+    return !error;
+  }
+
   // Patients
   async getPatientByUserId(userId: string): Promise<Patient | null> {
     if (!this.client) return null;

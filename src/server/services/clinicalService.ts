@@ -19,20 +19,24 @@ export class ClinicalService {
     const appointments = await db.getAppointments(patientId);
     const alerts = await db.getAlerts(patientId);
 
-    const latestBP = bpRecords[0] || {
-      systolic: 120,
-      diastolic: 80,
-      pulse: 72,
-      statusText: 'Normal',
-      recordedAt: new Date().toISOString(),
-    };
+    const latestBP = bpRecords[0]
+      ? {
+          systolic: bpRecords[0].systolic,
+          diastolic: bpRecords[0].diastolic,
+          pulse: bpRecords[0].pulse,
+          statusText: bpRecords[0].statusText || (bpRecords[0].systolic < 130 && bpRecords[0].diastolic < 85 ? 'Controlada' : 'Atenção'),
+          recordedAt: bpRecords[0].recordedAt,
+        }
+      : null;
 
-    const latestGlucose = glucoseRecords[0] || {
-      glucoseValue: 98,
-      moment: 'EM_JEJUM' as GlucoseMoment,
-      statusText: 'Normal',
-      recordedAt: new Date().toISOString(),
-    };
+    const latestGlucose = glucoseRecords[0]
+      ? {
+          value: glucoseRecords[0].glucoseValue,
+          moment: glucoseRecords[0].moment,
+          statusText: glucoseRecords[0].statusText || (glucoseRecords[0].glucoseValue < 100 ? 'Normal' : 'Alterada'),
+          recordedAt: glucoseRecords[0].recordedAt,
+        }
+      : null;
 
     const activeMeds = medications.filter((m) => m.status === 'ATIVO');
     const nextMedication = activeMeds[0]
@@ -41,11 +45,7 @@ export class ClinicalService {
           dosage: activeMeds[0].dosage,
           time: activeMeds[0].reminderTimes[0] || '08:00',
         }
-      : {
-          name: 'Losartana',
-          dosage: '50mg',
-          time: '08:00',
-        };
+      : null;
 
     const upcomingAppointments = appointments.filter(
       (a) => new Date(a.scheduledFor).getTime() >= Date.now() - 86400000
@@ -57,12 +57,7 @@ export class ClinicalService {
           doctor: upcomingAppointments[0].doctorName,
           type: upcomingAppointments[0].appointmentType,
         }
-      : {
-          date: '2025-05-22T09:00:00.000Z',
-          clinic: 'Clínica da Família',
-          doctor: 'Dr. Carlos Mendes',
-          type: 'Consulta de rotina',
-        };
+      : null;
 
     // Calculate health status compliance index
     let inTargetCount = 0;
@@ -79,19 +74,8 @@ export class ClinicalService {
 
     return {
       patient,
-      latestBP: {
-        systolic: latestBP.systolic,
-        diastolic: latestBP.diastolic,
-        pulse: latestBP.pulse,
-        statusText: latestBP.statusText || 'Normal',
-        recordedAt: latestBP.recordedAt,
-      },
-      latestGlucose: {
-        value: latestGlucose.glucoseValue,
-        moment: latestGlucose.moment,
-        statusText: latestGlucose.statusText || 'Normal',
-        recordedAt: latestGlucose.recordedAt,
-      },
+      latestBP,
+      latestGlucose,
       nextMedication,
       nextAppointment,
       healthStatus: {

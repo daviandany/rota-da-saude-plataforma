@@ -32,6 +32,7 @@ import {
 import { api } from '../../services/api';
 import { PatientSummary, BloodPressureRecord, GlucoseRecord, Medication, Appointment } from '../../types';
 import { useNotifications } from '../../context/NotificationContext';
+import { useAuth } from '../../context/AuthContext';
 import { generateMedicalReportPDF } from '../../utils/pdfGenerator';
 
 interface WebPatientDashboardProps {
@@ -41,6 +42,7 @@ interface WebPatientDashboardProps {
   onOpenNotificationCenter: () => void;
   onOpenSymptomModal?: () => void;
   onOpenEmergencyModal?: () => void;
+  onOpenScheduleAppointment?: () => void;
 }
 
 type PatientWebTab = 'dashboard' | 'measurements' | 'medications' | 'appointments' | 'reports' | 'education';
@@ -52,8 +54,10 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
   onOpenNotificationCenter,
   onOpenSymptomModal,
   onOpenEmergencyModal,
+  onOpenScheduleAppointment,
 }) => {
   const { testMedicationReminder } = useNotifications();
+  const { user } = useAuth();
   const [summary, setSummary] = useState<PatientSummary | null>(null);
   const [pressureHistory, setPressureHistory] = useState<BloodPressureRecord[]>([]);
   const [glucoseHistory, setGlucoseHistory] = useState<GlucoseRecord[]>([]);
@@ -198,6 +202,17 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
               <Pill className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
               <span>+ Medicamento</span>
             </button>
+
+            {onOpenScheduleAppointment && (
+              <button
+                onClick={onOpenScheduleAppointment}
+                className="px-3.5 py-2 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/80 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs active:scale-95"
+                title="Agendar consulta médica na UBS"
+              >
+                <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span>+ Consulta</span>
+              </button>
+            )}
 
             {onOpenSymptomModal && (
               <button
@@ -350,17 +365,19 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
                   <span>Programa Hiperdia Municipal</span>
                 </div>
                 <h1 className="text-2xl lg:text-3xl font-black tracking-tight text-white">
-                  Olá, {summary?.patient.name || 'Maria Silva'}!
+                  Olá, {summary?.patient?.name || user?.name || 'Cidadão'}!
                 </h1>
                 <p className="text-xs lg:text-sm text-teal-100/90 mt-1 max-w-2xl leading-relaxed">
-                  Seus dados clínicos estão sincronizados em tempo real com a UBS Dr. Manoel de Abreu. Utilize as abas acima para navegar pelos detalhes.
+                  Seus dados clínicos estão sincronizados em tempo real com {summary?.patient?.healthcareUnit || user?.profile?.healthcareUnit || 'sua Unidade Básica de Saúde'}. Utilize as abas acima para navegar pelos detalhes.
                 </p>
               </div>
 
               <div className="flex items-center gap-3 shrink-0">
                 <div className="bg-teal-950/60 border border-teal-500/40 rounded-2xl p-3 text-right">
                   <span className="text-[11px] text-teal-300 font-bold block">Status do Acompanhamento</span>
-                  <span className="text-sm font-black text-emerald-300">Pressão & Glicemia em Dia</span>
+                  <span className="text-sm font-black text-emerald-300">
+                    {summary?.patient?.riskLevel ? `Risco ${summary.patient.riskLevel}` : 'Acompanhamento Ativo'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -381,16 +398,16 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
               </div>
               <div className="flex items-baseline gap-2">
                 <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                  {summary?.latestBP ? `${summary.latestBP.systolic}/${summary.latestBP.diastolic}` : '120/80'}
+                  {summary?.latestBP ? `${summary.latestBP.systolic}/${summary.latestBP.diastolic}` : 'Sem registro'}
                 </span>
-                <span className="text-xs font-bold text-slate-400">mmHg</span>
+                {summary?.latestBP && <span className="text-xs font-bold text-slate-400">mmHg</span>}
               </div>
               <div className="mt-2.5 flex items-center justify-between text-[11px]">
                 <span className="text-slate-500 dark:text-slate-400 font-medium">
-                  {summary?.latestBP?.recordedAt ? new Date(summary.latestBP.recordedAt).toLocaleDateString('pt-BR') : 'Hoje'}
+                  {summary?.latestBP?.recordedAt ? new Date(summary.latestBP.recordedAt).toLocaleDateString('pt-BR') : 'Clique para registrar'}
                 </span>
                 <span className="text-emerald-700 dark:text-emerald-300 font-bold bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-md">
-                  {summary?.latestBP?.statusText || 'Controlada'}
+                  {summary?.latestBP?.statusText || 'Pendente'}
                 </span>
               </div>
             </div>
@@ -408,16 +425,16 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
               </div>
               <div className="flex items-baseline gap-2">
                 <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                  {summary?.latestGlucose?.value || '108'}
+                  {summary?.latestGlucose ? summary.latestGlucose.value : 'Sem registro'}
                 </span>
-                <span className="text-xs font-bold text-slate-400">mg/dL</span>
+                {summary?.latestGlucose && <span className="text-xs font-bold text-slate-400">mg/dL</span>}
               </div>
               <div className="mt-2.5 flex items-center justify-between text-[11px]">
                 <span className="text-slate-500 dark:text-slate-400 font-medium">
-                  {summary?.latestGlucose?.moment ? String(summary.latestGlucose.moment).replace('_', ' ') : 'Em jejum'}
+                  {summary?.latestGlucose?.moment ? String(summary.latestGlucose.moment).replace('_', ' ') : 'Clique para registrar'}
                 </span>
                 <span className="text-emerald-700 dark:text-emerald-300 font-bold bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-md">
-                  {summary?.latestGlucose?.statusText || 'Normal'}
+                  {summary?.latestGlucose?.statusText || 'Pendente'}
                 </span>
               </div>
             </div>
@@ -434,14 +451,18 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
                 </div>
               </div>
               <div className="text-base font-black text-slate-900 dark:text-white line-clamp-1">
-                {summary?.nextMedication.name || 'Losartana Potássica'} {summary?.nextMedication.dosage || '50mg'}
+                {summary?.nextMedication ? `${summary.nextMedication.name} ${summary.nextMedication.dosage}` : 'Nenhum medicamento'}
               </div>
               <div className="mt-2.5 flex items-center justify-between text-[11px]">
-                <span className="text-slate-500 dark:text-slate-400 font-medium">Horário da dose</span>
-                <span className="text-teal-800 dark:text-teal-300 font-black flex items-center gap-1 bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800 px-2 py-0.5 rounded-md">
-                  <Clock className="w-3 h-3 text-teal-600 dark:text-teal-400" />
-                  {summary?.nextMedication.time || '14:00'}
+                <span className="text-slate-500 dark:text-slate-400 font-medium">
+                  {summary?.nextMedication ? 'Horário da dose' : 'Clique para prescrever'}
                 </span>
+                {summary?.nextMedication && (
+                  <span className="text-teal-800 dark:text-teal-300 font-black flex items-center gap-1 bg-teal-50 dark:bg-teal-950/60 border border-teal-200 dark:border-teal-800 px-2 py-0.5 rounded-md">
+                    <Clock className="w-3 h-3 text-teal-600 dark:text-teal-400" />
+                    {summary.nextMedication.time}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -976,63 +997,105 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
       {activeTab === 'appointments' && (
         <div className="space-y-6">
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-6">
-            <div className="pb-5 border-b border-slate-100 dark:border-slate-800">
-              <h2 className="text-base font-black text-slate-900 dark:text-white">
-                Consultas Agendadas e Equipe de Saúde da Família (ESF)
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Acompanhamento periódico na sua Unidade Básica de Saúde de referência.
-              </p>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-5 border-b border-slate-100 dark:border-slate-800">
+              <div>
+                <h2 className="text-base font-black text-slate-900 dark:text-white">
+                  Consultas Agendadas e Equipe de Saúde da Família (ESF)
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Acompanhamento periódico na sua Unidade Básica de Saúde de referência.
+                </p>
+              </div>
+              {onOpenScheduleAppointment && (
+                <button
+                  onClick={onOpenScheduleAppointment}
+                  className="px-4 py-2 bg-teal-800 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm self-start sm:self-auto cursor-pointer"
+                >
+                  <Calendar className="w-4 h-4" />
+                  <span>+ Agendar Consulta</span>
+                </button>
+              )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Consultations List */}
               <div className="lg:col-span-8 space-y-4">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Próximos Atendimentos
+                  Próximos Atendimentos ({appointments.length})
                 </h3>
 
-                {appointments.map((appt) => (
-                  <div
-                    key={appt.id}
-                    className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 hover:border-blue-300 transition flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-                  >
-                    <div className="flex items-start gap-3.5">
-                      <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 flex items-center justify-center font-bold shrink-0">
-                        <Calendar className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-sm font-black text-slate-900 dark:text-white">{appt.doctorName || 'Dr. Carlos Mendes'}</h4>
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
-                            {appt.appointmentType.includes('RETORNO') || appt.appointmentType === 'FOLLOW_UP' ? 'Retorno Clínico' : 'Consulta Rotina'}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{appt.clinicName || 'UBS Dr. Manoel de Abreu'} · ESF 04</p>
-
-                        <div className="mt-2.5 flex items-center gap-4 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                          <span className="flex items-center gap-1 text-teal-700 dark:text-teal-400">
-                            <Clock className="w-3.5 h-3.5" />
-                            {new Date(appt.scheduledFor).toLocaleDateString('pt-BR')} às{' '}
-                            {new Date(appt.scheduledFor).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                          <span className="text-slate-400">·</span>
-                          <span>Consultório 03</span>
-                        </div>
-                      </div>
+                {appointments.length === 0 ? (
+                  <div className="p-8 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 flex items-center justify-center mx-auto">
+                      <Calendar className="w-6 h-6" />
                     </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="text-sm font-bold text-slate-800 dark:text-white">
+                      Nenhuma consulta agendada no momento
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                      Mantenha seu acompanhamento do Hiperdia em dia. Agende uma consulta de rotina ou retorno com a equipe da UBS.
+                    </p>
+                    {onOpenScheduleAppointment && (
                       <button
-                        onClick={handleDownloadPDF}
-                        className="px-3 py-2 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-teal-700 dark:text-teal-400 border border-teal-200 dark:border-teal-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+                        onClick={onOpenScheduleAppointment}
+                        className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-teal-800 hover:bg-teal-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
                       >
-                        <FileText className="w-3.5 h-3.5" />
-                        <span>Levar Relatório</span>
+                        <Calendar className="w-4 h-4" />
+                        <span>Agendar Minha Consulta</span>
                       </button>
-                    </div>
+                    )}
                   </div>
-                ))}
+                ) : (
+                  appointments.map((appt) => (
+                    <div
+                      key={appt.id}
+                      className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 hover:border-blue-300 transition flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                    >
+                      <div className="flex items-start gap-3.5">
+                        <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 flex items-center justify-center font-bold shrink-0">
+                          <Calendar className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                              {appt.doctorName || 'Equipe de Saúde da Família'}
+                            </h4>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                              {appt.appointmentType.includes('RETORNO') || appt.appointmentType === 'FOLLOW_UP' ? 'Retorno Clínico' : 'Consulta Rotina'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            {appt.clinicName || user?.profile?.healthcareUnit || 'UBS de Referência'}
+                          </p>
+
+                          <div className="mt-2.5 flex items-center gap-4 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            <span className="flex items-center gap-1 text-teal-700 dark:text-teal-400">
+                              <Clock className="w-3.5 h-3.5" />
+                              {new Date(appt.scheduledFor).toLocaleDateString('pt-BR')} às{' '}
+                              {new Date(appt.scheduledFor).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                            {appt.notes && (
+                              <>
+                                <span className="text-slate-400">·</span>
+                                <span className="text-slate-500 dark:text-slate-400 text-[11px] truncate max-w-xs">{appt.notes}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={handleDownloadPDF}
+                          className="px-3 py-2 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-teal-700 dark:text-teal-400 border border-teal-200 dark:border-teal-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>Levar Relatório</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
 
               {/* UBS Details Card */}
@@ -1040,15 +1103,17 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
                 <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-900 to-teal-950 text-white border border-teal-700/40">
                   <div className="flex items-center gap-2 mb-3">
                     <MapPin className="w-5 h-5 text-teal-400" />
-                    <h4 className="text-sm font-bold text-white">UBS Dr. Manoel de Abreu</h4>
+                    <h4 className="text-sm font-bold text-white">
+                      {user?.profile?.healthcareUnit || 'UBS Dr. Manoel de Abreu'}
+                    </h4>
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    Rua das Hortênsias, 240 · Bairro Central<br />
+                    Unidade de Saúde da Família e Atenção Primária à Saúde.<br />
                     Atendimento: Segunda a Sexta, das 07h às 18h
                   </p>
 
                   <div className="mt-4 pt-3 border-t border-teal-800/80 text-xs space-y-1.5 text-teal-200">
-                    <div>Telefone: (11) 3456-7890</div>
+                    <div>Telefone: {user?.profile?.phone || '(11) 3456-7890'}</div>
                     <div>Sala de Curativos e PA: 07h - 17h30</div>
                     <div>Farmácia Básica: 08h - 17h</div>
                   </div>

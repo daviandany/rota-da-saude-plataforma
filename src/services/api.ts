@@ -23,11 +23,11 @@ function getAuthHeaders(): HeadersInit {
 
 export const api = {
   // Auth
-  async login(email: string, password: string): Promise<{ token: string; user: User }> {
+  async login(email: string, password: string, name?: string, role?: string): Promise<{ token: string; user: User }> {
     const res = await fetch(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, name, role }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Falha no login');
@@ -42,6 +42,60 @@ export const api = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Falha no cadastro');
+    return data;
+  },
+
+  async forgotPassword(email: string): Promise<{
+    success: boolean;
+    message: string;
+    resetLink: string;
+    previewEmail: {
+      to: string;
+      userName: string;
+      subject: string;
+      resetLink: string;
+      expiresInMinutes: number;
+      sentAt: string;
+    };
+  }> {
+    const res = await fetch(`${API_BASE}/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Falha ao solicitar recuperação de senha.');
+    return data;
+  },
+
+  async verifyResetToken(token: string): Promise<{
+    success: boolean;
+    valid: boolean;
+    email: string;
+    userName: string;
+  }> {
+    const res = await fetch(`${API_BASE}/auth/verify-reset-token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Link de recuperação inválido ou expirado.');
+    return data;
+  },
+
+  async resetPassword(token: string, newPassword: string): Promise<{
+    success: boolean;
+    message: string;
+    email: string;
+  }> {
+    const res = await fetch(`${API_BASE}/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, newPassword }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Falha ao redefinir senha.');
     return data;
   },
 
@@ -69,6 +123,27 @@ export const api = {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Sessão expirada');
     return data.user;
+  },
+
+  async updateProfile(payload: {
+    name?: string;
+    age?: number;
+    gender?: string;
+    conditions?: string[];
+    healthcareUnit?: string;
+    phone?: string;
+    crm?: string;
+    specialty?: string;
+    riskLevel?: string;
+  }): Promise<{ success: boolean; user: User }> {
+    const res = await fetch(`${API_BASE}/auth/profile`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Falha ao atualizar dados cadastrais');
+    return data;
   },
 
   // Clinical (Patient)
@@ -206,7 +281,24 @@ export const api = {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Erro ao carregar consultas');
-    return data.data;
+    let list: Appointment[] = data.data || [];
+
+    if (FirestoreClinicalService.isAuthReady()) {
+      try {
+        const fsApps = await FirestoreClinicalService.getAppointments(patientId);
+        if (fsApps && fsApps.length > 0) {
+          const map = new Map<string, Appointment>();
+          list.forEach((a) => map.set(a.id, a));
+          fsApps.forEach((a) => map.set(a.id, a));
+          list = Array.from(map.values()).sort(
+            (a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime()
+          );
+        }
+      } catch (e) {
+        console.warn('[Firestore] Falha ao sincronizar consultas do Firestore:', e);
+      }
+    }
+    return list;
   },
 
   async createAppointment(payload: any): Promise<Appointment> {

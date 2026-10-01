@@ -34,6 +34,7 @@ export interface IDatabase {
   getUserByEmail(email: string): Promise<User | null>;
   getUserById(id: string): Promise<User | null>;
   createUser(user: User): Promise<User>;
+  updateUserPassword(userId: string, passwordHash: string): Promise<boolean>;
 
   // Patients
   getPatientByUserId(userId: string): Promise<Patient | null>;
@@ -79,15 +80,15 @@ class InMemoryDatabase implements IDatabase {
   private users: User[] = [...initialUsers];
   private professionals: Professional[] = [...initialProfessionals];
   private patients: Patient[] = [...initialPatients];
-  private bpRecords: BloodPressureRecord[] = [...initialBloodPressure];
-  private glucoseRecords: GlucoseRecord[] = [...initialGlucose];
-  private medications: Medication[] = [...initialMedications];
-  private appointments: Appointment[] = [...initialAppointments];
-  private alerts: ClinicalAlert[] = [...initialAlerts];
+  private bpRecords: BloodPressureRecord[] = [];
+  private glucoseRecords: GlucoseRecord[] = [];
+  private medications: Medication[] = [];
+  private appointments: Appointment[] = [];
+  private alerts: ClinicalAlert[] = [];
   private educational: EducationalContent[] = [...initialEducationalContents];
 
   async init(): Promise<void> {
-    console.log('[DB] In-Memory Persistence Layer initialized with mock data.');
+    console.log('[DB] In-Memory Persistence Layer initialized with clean dynamic data store.');
   }
 
   async getUserByEmail(email: string): Promise<User | null> {
@@ -101,6 +102,13 @@ class InMemoryDatabase implements IDatabase {
   async createUser(user: User): Promise<User> {
     this.users.push(user);
     return user;
+  }
+
+  async updateUserPassword(userId: string, passwordHash: string): Promise<boolean> {
+    const user = this.users.find((u) => u.id === userId);
+    if (!user) return false;
+    user.passwordHash = passwordHash;
+    return true;
   }
 
   async getPatientByUserId(userId: string): Promise<Patient | null> {
@@ -433,6 +441,14 @@ class PostgresDatabase implements IDatabase {
       [user.id, user.email, user.passwordHash, user.name, user.role, user.createdAt]
     );
     return user;
+  }
+
+  async updateUserPassword(userId: string, passwordHash: string): Promise<boolean> {
+    const res = await this.pool.query(
+      'UPDATE users SET password_hash = $1 WHERE id = $2',
+      [passwordHash, userId]
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 
   async getPatientByUserId(userId: string): Promise<Patient | null> {

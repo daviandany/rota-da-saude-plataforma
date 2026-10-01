@@ -10,16 +10,24 @@ export class DoctorService {
 
     const criticalAlerts = alerts.filter((a) => a.severity === 'CRITICO' && a.status === 'PENDENTE');
 
+    const totalPatients = patients.length;
+    const altoCount = patients.filter((p) => p.riskLevel === 'ALTO').length;
+    const modCount = patients.filter((p) => p.riskLevel === 'MODERADO').length;
+    const baixoCount = patients.filter((p) => p.riskLevel === 'BAIXO').length;
+
+    const todayDateStr = new Date().toISOString().slice(0, 10);
+    const consultasHojeCount = appointments.filter((a) => a.scheduledFor && a.scheduledFor.startsWith(todayDateStr)).length;
+
     return {
-      consultasHoje: 24,
-      alertasCriticos: 15,
-      pacientesCadastrados: 128,
-      atendimentosTaxa: '82%',
+      consultasHoje: consultasHojeCount,
+      alertasCriticos: criticalAlerts.length,
+      pacientesCadastrados: totalPatients,
+      atendimentosTaxa: totalPatients > 0 ? `${Math.round(((totalPatients - altoCount) / totalPatients) * 100)}%` : '100%',
       distribuicaoRisco: {
-        total: 128,
-        alto: { percent: 10, count: 13 },
-        moderado: { percent: 22, count: 28 },
-        baixo: { percent: 68, count: 87 },
+        total: totalPatients,
+        alto: { percent: totalPatients ? Math.round((altoCount / totalPatients) * 100) : 0, count: altoCount },
+        moderado: { percent: totalPatients ? Math.round((modCount / totalPatients) * 100) : 0, count: modCount },
+        baixo: { percent: totalPatients ? Math.round((baixoCount / totalPatients) * 100) : 0, count: baixoCount },
       },
       recentCriticalAlerts: criticalAlerts.slice(0, 5),
       appointmentsCount: appointments.length,

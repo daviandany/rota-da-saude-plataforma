@@ -4,6 +4,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signOut as firebaseSignOut,
+  sendPasswordResetEmail,
   onAuthStateChanged,
   User as FirebaseUser,
 } from 'firebase/auth';
@@ -204,5 +205,16 @@ export async function signOutFirebase(): Promise<void> {
     await firebaseSignOut(auth);
   } catch (e) {
     console.warn('[Firebase Auth] Erro ao deslogar:', e);
+  }
+}
+
+// Send Firebase password reset email
+export async function sendFirebasePasswordReset(email: string): Promise<boolean> {
+  try {
+    await sendPasswordResetEmail(auth, email);
+    return true;
+  } catch (err: any) {
+    console.warn('[Firebase Auth] sendPasswordResetEmail fallback:', err?.message);
+    return false;
   }
 }

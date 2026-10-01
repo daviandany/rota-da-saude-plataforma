@@ -182,59 +182,103 @@ export const PatientMedications: React.FC<PatientMedicationsProps> = ({
               <Plus className="w-4 h-4" />
             </button>
 
-            {/* Próxima consulta card below medications */}
-            <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/80 dark:border-slate-800 shadow-xs mt-4">
-              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
-                Próxima consulta agendada
-              </div>
-              <div className="text-xs font-bold text-slate-800 dark:text-white">
-                22/05/2025 às 09:00
-              </div>
-              <div className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
-                Clínico da Família - Dr. Carlos Mendes
-              </div>
-              <button
-                onClick={() => setActiveTab('appointments')}
-                className="mt-3 text-xs font-semibold text-teal-700 dark:text-teal-400 hover:underline block"
-              >
-                Ver histórico de consultas
-              </button>
-            </div>
+            {/* Próxima consulta card below medications (dynamic) */}
+            {(() => {
+              const nextApp = appointments.find(
+                (a) => new Date(a.scheduledFor).getTime() >= Date.now() - 3600000 * 24 && a.status !== 'CANCELADA'
+              );
+              return (
+                <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/80 dark:border-slate-800 shadow-xs mt-4">
+                  <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
+                    Próxima consulta agendada
+                  </div>
+                  {nextApp ? (
+                    <>
+                      <div className="text-xs font-bold text-slate-800 dark:text-white">
+                        {new Date(nextApp.scheduledFor).toLocaleDateString('pt-BR')} às{' '}
+                        {new Date(nextApp.scheduledFor).toLocaleTimeString('pt-BR', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </div>
+                      <div className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                        {nextApp.appointmentType} • {nextApp.doctorName}
+                      </div>
+                      <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                        {nextApp.clinicName}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-xs text-slate-500 dark:text-slate-400">
+                      Nenhuma consulta futura agendada no momento.
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setActiveTab('appointments')}
+                    className="mt-3 text-xs font-semibold text-teal-700 dark:text-teal-400 hover:underline block"
+                  >
+                    Ver todas as consultas ({appointments.length})
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         ) : (
           <div className="space-y-3">
-            {appointments.map((app) => (
-              <div
-                key={app.id}
-                className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/80 dark:border-slate-800 shadow-xs"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-teal-600 dark:text-teal-400" />
-                    <span className="text-xs font-bold text-slate-800 dark:text-white">
-                      {new Date(app.scheduledFor).toLocaleDateString('pt-BR')} às{' '}
-                      {new Date(app.scheduledFor).toLocaleTimeString('pt-BR', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+            {appointments.length === 0 ? (
+              <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200/80 dark:border-slate-800 text-center space-y-2">
+                <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-950 text-teal-600 dark:text-teal-400 flex items-center justify-center mx-auto">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div className="text-xs font-bold text-slate-800 dark:text-white">
+                  Sem consultas registradas
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Suas consultas agendadas pela Unidade Básica de Saúde aparecerão aqui.
+                </p>
+              </div>
+            ) : (
+              appointments.map((app) => (
+                <div
+                  key={app.id}
+                  className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/80 dark:border-slate-800 shadow-xs"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                      <span className="text-xs font-bold text-slate-800 dark:text-white">
+                        {new Date(app.scheduledFor).toLocaleDateString('pt-BR')} às{' '}
+                        {new Date(app.scheduledFor).toLocaleTimeString('pt-BR', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        app.status === 'REALIZADA'
+                          ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                          : app.status === 'CANCELADA'
+                          ? 'bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                          : 'bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800'
+                      }`}
+                    >
+                      {app.status || 'AGENDADA'}
                     </span>
                   </div>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800">
-                    {app.status}
-                  </span>
-                </div>
-                <div className="mt-2 text-xs font-medium text-slate-800 dark:text-white">
-                  {app.appointmentType}
-                </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{app.doctorName}</div>
-                <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{app.clinicName}</div>
-                {app.notes && (
-                  <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-300 italic">
-                    {app.notes}
+                  <div className="mt-2 text-xs font-medium text-slate-800 dark:text-white">
+                    {app.appointmentType}
                   </div>
-                )}
-              </div>
-            ))}
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{app.doctorName}</div>
+                  <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{app.clinicName}</div>
+                  {app.notes && (
+                    <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-300 italic">
+                      {app.notes}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         )}
       </div>

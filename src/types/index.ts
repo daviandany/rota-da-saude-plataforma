@@ -126,30 +126,30 @@ export interface EducationalContent {
 
 export interface PatientSummary {
   patient: Patient;
-  latestBP: {
+  latestBP?: {
     systolic: number;
     diastolic: number;
     pulse: number;
     statusText: string;
     recordedAt: string;
-  };
-  latestGlucose: {
+  } | null;
+  latestGlucose?: {
     value: number;
     moment: GlucoseMoment;
     statusText: string;
     recordedAt: string;
-  };
-  nextMedication: {
+  } | null;
+  nextMedication?: {
     name: string;
     dosage: string;
     time: string;
-  };
-  nextAppointment: {
+  } | null;
+  nextAppointment?: {
     date: string;
     clinic: string;
     doctor: string;
     type: string;
-  };
+  } | null;
   healthStatus: {
     percentage: number;
     message: string;

@@ -433,7 +433,7 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
                   </div>
                   <div className="flex items-baseline gap-2">
                     <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                      {stats?.consultasHoje || appointments.length || '8'}
+                      {stats?.consultasHoje ?? appointments.length}
                     </span>
                     <span className="text-xs font-bold text-slate-400">pacientes</span>
                   </div>
@@ -456,7 +456,7 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
                   </div>
                   <div className="flex items-baseline gap-2">
                     <span className="text-2xl font-black text-rose-600 dark:text-rose-400 tracking-tight">
-                      {alerts.length || stats?.alertasAtivos || '15'}
+                      {alerts.length}
                     </span>
                     <span className="text-xs font-bold text-slate-400">prioritários</span>
                   </div>
@@ -479,7 +479,7 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
                   </div>
                   <div className="flex items-baseline gap-2">
                     <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                      {patients.length || stats?.pacientesTotal || '128'}
+                      {patients.length}
                     </span>
                     <span className="text-xs font-bold text-slate-400">cadastrados</span>
                   </div>
@@ -502,7 +502,7 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
                   </div>
                   <div className="flex items-baseline gap-2">
                     <span className="text-2xl font-black text-emerald-600 dark:text-emerald-400 tracking-tight">
-                      {stats?.atendimentosTaxa || '82%'}
+                      {stats?.atendimentosTaxa || (patients.length ? `${Math.round(((patients.length - alerts.filter((a) => a.severity === 'CRITICO').length) / Math.max(1, patients.length)) * 100)}%` : '100%')}
                     </span>
                     <span className="text-xs font-bold text-slate-400">na meta SUS</span>
                   </div>
@@ -585,28 +585,34 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
                   </div>
 
                   <div className="space-y-2.5">
-                    {appointments.slice(0, 3).map((appt) => (
-                      <div
-                        key={appt.id}
-                        className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/80 flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 flex items-center justify-center font-bold text-xs">
-                            <Clock className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <h4 className="text-xs font-bold text-slate-900 dark:text-white">{appt.patientName}</h4>
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                              {new Date(appt.scheduledFor).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · {appt.appointmentType.includes('RETORNO') ? 'Retorno' : 'Rotina'}
-                            </p>
-                          </div>
-                        </div>
-
-                        <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950 px-2 py-0.5 rounded-md">
-                          Confirmada
-                        </span>
+                    {appointments.length === 0 ? (
+                      <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 text-center text-xs text-slate-500 dark:text-slate-400">
+                        Nenhuma consulta agendada para hoje.
                       </div>
-                    ))}
+                    ) : (
+                      appointments.slice(0, 3).map((appt) => (
+                        <div
+                          key={appt.id}
+                          className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/80 flex items-center justify-between"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 flex items-center justify-center font-bold text-xs">
+                              <Clock className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <h4 className="text-xs font-bold text-slate-900 dark:text-white">{appt.patientName}</h4>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                {new Date(appt.scheduledFor).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} · {appt.appointmentType.includes('RETORNO') ? 'Retorno' : 'Rotina'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950 px-2 py-0.5 rounded-md">
+                            {appt.status || 'Confirmada'}
+                          </span>
+                        </div>
+                      ))
+                    )}
                   </div>
 
                   <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
@@ -854,38 +860,64 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
               </div>
 
               <div className="space-y-3">
-                {appointments.map((ap) => (
-                  <div
-                    key={ap.id}
-                    className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 flex items-center justify-center font-bold text-xs">
-                        <Clock className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <h4 className="text-xs font-black text-slate-900 dark:text-white">{ap.patientName}</h4>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                          {new Date(ap.scheduledFor).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} · Consultório 03
-                        </p>
-                      </div>
+                {appointments.length === 0 ? (
+                  <div className="p-8 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center mx-auto">
+                      <Calendar className="w-6 h-6" />
                     </div>
-
-                    <div className="flex items-center gap-3">
-                      <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950 px-2.5 py-1 rounded-md">
-                        {ap.appointmentType.includes('RETORNO') ? 'Retorno Hiperdia' : 'Primeira Consulta'}
-                      </span>
-                      <button
-                        onClick={() => {
-                          if (ap.patientId) handleSelectPatient(ap.patientId);
-                        }}
-                        className="px-3 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100"
-                      >
-                        Prontuário
-                      </button>
+                    <div className="text-sm font-bold text-slate-800 dark:text-white">
+                      Nenhuma consulta agendada
                     </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                      A agenda ambulatorial da unidade está sem atendimentos previstos. Clique no botão acima para agendar um paciente.
+                    </p>
+                    <button
+                      onClick={onOpenNewAppointment}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-xs transition"
+                    >
+                      <PlusCircle className="w-4 h-4" />
+                      <span>Agendar Consulta</span>
+                    </button>
                   </div>
-                ))}
+                ) : (
+                  appointments.map((ap) => (
+                    <div
+                      key={ap.id}
+                      className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 flex items-center justify-center font-bold text-xs">
+                          <Clock className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-black text-slate-900 dark:text-white">{ap.patientName}</h4>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                            {new Date(ap.scheduledFor).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} · {ap.clinicName || 'UBS Dr. Manoel de Abreu'}
+                          </p>
+                          {ap.notes && (
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate max-w-md mt-0.5">
+                              {ap.notes}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950 px-2.5 py-1 rounded-md">
+                          {ap.appointmentType.includes('RETORNO') ? 'Retorno Hiperdia' : ap.appointmentType}
+                        </span>
+                        <button
+                          onClick={() => {
+                            if (ap.patientId) handleSelectPatient(ap.patientId);
+                          }}
+                          className="px-3 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100"
+                        >
+                          Prontuário
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
