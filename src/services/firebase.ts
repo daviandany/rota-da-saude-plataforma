@@ -16,7 +16,18 @@ import {
   getDocFromServer,
   serverTimestamp,
 } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
+import firebaseAppletConfig from '../../firebase-applet-config.json';
+
+// 1. Variáveis Públicas (Frontend - Firebase Client SDK)
+export const firebaseConfig = {
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || firebaseAppletConfig.apiKey,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || firebaseAppletConfig.authDomain,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || firebaseAppletConfig.projectId,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || firebaseAppletConfig.storageBucket,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || firebaseAppletConfig.messagingSenderId,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || firebaseAppletConfig.appId,
+  firestoreDatabaseId: firebaseAppletConfig.firestoreDatabaseId,
+};
 
 // Initialize Firebase App
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);

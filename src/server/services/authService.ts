@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { getDatabase } from '../db/database.js';
 import { config } from '../config/index.js';
+import { verifyFirebaseIdToken } from '../config/firebaseAdmin.js';
 import { AuthenticatedUserPayload } from '../middlewares/authMiddleware.js';
 import { User, UserRole } from '../domain/entities.js';
 
@@ -237,7 +238,22 @@ export class AuthService {
     name: string;
     photoURL?: string;
     role: UserRole;
+    idToken?: string;
   }) {
+    if (payload.idToken) {
+      try {
+        const decoded = await verifyFirebaseIdToken(payload.idToken);
+        if (decoded) {
+          payload.uid = decoded.uid;
+          payload.email = decoded.email || payload.email;
+          payload.name = decoded.name || payload.name;
+          payload.photoURL = decoded.picture || payload.photoURL;
+        }
+      } catch (err) {
+        console.warn('[Firebase Admin] Falha ao verificar idToken, prosseguindo com payload autenticado:', err);
+      }
+    }
+
     const db = await getDatabase();
     let user = await db.getUserByEmail(payload.email);
 

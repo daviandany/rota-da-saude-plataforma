@@ -67,7 +67,7 @@ export const authController = {
 
   async googleFirebaseLogin(req: Request, res: Response) {
     try {
-      const { uid, email, name, photoURL, role } = req.body;
+      const { uid, email, name, photoURL, role, idToken } = req.body;
       if (!uid || !email) {
         return res.status(400).json({ success: false, error: 'UID e e-mail Firebase Google são obrigatórios.' });
       }
@@ -77,6 +77,7 @@ export const authController = {
         name: name || email.split('@')[0],
         photoURL,
         role: role === 'PROFESSIONAL' ? 'PROFESSIONAL' : 'PATIENT',
+        idToken,
       });
       return res.json({ success: true, ...result });
     } catch (err: any) {
