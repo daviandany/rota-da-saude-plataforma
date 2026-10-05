@@ -9,9 +9,9 @@ import {
   contentController,
   reportController,
   notificationController,
-} from '../controllers';
-import { authMiddleware, requireRole } from '../middlewares/authMiddleware';
-import { getDatabase } from '../db/database';
+} from '../controllers/index.js';
+import { authMiddleware, requireRole } from '../middlewares/authMiddleware.js';
+import { getDatabase } from '../db/database.js';
 
 export const apiRouter = Router();
 

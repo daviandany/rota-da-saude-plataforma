@@ -1,5 +1,5 @@
-import { getDatabase } from '../db/database';
-import { RiskLevel } from '../domain/entities';
+import { getDatabase } from '../db/database.js';
+import { RiskLevel } from '../domain/entities.js';
 
 export class DoctorService {
   static async getDashboardStats() {

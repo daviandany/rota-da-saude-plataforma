@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { IDatabase } from './database';
+import { IDatabase } from './database.js';
 import {
   User,
   Patient,
@@ -10,7 +10,7 @@ import {
   Appointment,
   ClinicalAlert,
   EducationalContent,
-} from '../domain/entities';
+} from '../domain/entities.js';
 
 export class SupabaseAdapter implements IDatabase {
   public isPostgres = true;

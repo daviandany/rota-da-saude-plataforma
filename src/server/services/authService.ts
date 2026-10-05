@@ -1,9 +1,9 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { getDatabase } from '../db/database';
-import { config } from '../config';
-import { AuthenticatedUserPayload } from '../middlewares/authMiddleware';
-import { User, UserRole } from '../domain/entities';
+import { getDatabase } from '../db/database.js';
+import { config } from '../config/index.js';
+import { AuthenticatedUserPayload } from '../middlewares/authMiddleware.js';
+import { User, UserRole } from '../domain/entities.js';
 
 export class AuthService {
   static async login(email: string, password: string, name?: string, role: UserRole = 'PATIENT') {

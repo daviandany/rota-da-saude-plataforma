@@ -1,9 +1,9 @@
 import { Request, Response } from 'express';
-import { AuthService } from '../services/authService';
-import { ClinicalService } from '../services/clinicalService';
-import { DoctorService } from '../services/doctorService';
-import { MedicationService, AppointmentService, AlertService, ContentService } from '../services/extraServices';
-import { getDatabase } from '../db/database';
+import { AuthService } from '../services/authService.js';
+import { ClinicalService } from '../services/clinicalService.js';
+import { DoctorService } from '../services/doctorService.js';
+import { MedicationService, AppointmentService, AlertService, ContentService } from '../services/extraServices.js';
+import { getDatabase } from '../db/database.js';
 
 export const authController = {
   async login(req: Request, res: Response) {
@@ -424,5 +424,5 @@ export const reportController = {
   },
 };
 
-export { notificationController } from './notificationController';
+export { notificationController } from './notificationController.js';
 

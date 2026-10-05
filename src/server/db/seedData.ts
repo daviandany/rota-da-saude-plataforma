@@ -9,7 +9,7 @@ import {
   Appointment,
   ClinicalAlert,
   EducationalContent,
-} from '../domain/entities';
+} from '../domain/entities.js';
 
 // Default hashed passwords
 const salt = bcrypt.genSaltSync(10);

@@ -1,5 +1,5 @@
-import { getDatabase } from '../db/database';
-import { Medication, Appointment, ClinicalAlert } from '../domain/entities';
+import { getDatabase } from '../db/database.js';
+import { Medication, Appointment, ClinicalAlert } from '../domain/entities.js';
 
 export class MedicationService {
   static async getByPatient(patientId: string) {

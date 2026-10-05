@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
-import { NotificationService } from '../services/notificationService';
-import { getDatabase } from '../db/database';
+import { NotificationService } from '../services/notificationService.js';
+import { getDatabase } from '../db/database.js';
 
 export const notificationController = {
   // Registra token FCM do dispositivo

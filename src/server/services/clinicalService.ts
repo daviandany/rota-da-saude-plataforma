@@ -1,11 +1,11 @@
-import { getDatabase } from '../db/database';
+import { getDatabase } from '../db/database.js';
 import {
   BloodPressureRecord,
   GlucoseRecord,
   GlucoseMoment,
   ClinicalAlert,
-} from '../domain/entities';
-import { NotificationService } from './notificationService';
+} from '../domain/entities.js';
+import { NotificationService } from './notificationService.js';
 
 export class ClinicalService {
   static async getPatientSummary(patientId: string) {

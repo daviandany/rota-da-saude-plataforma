@@ -1,5 +1,5 @@
 import pg from 'pg';
-import { config } from '../config';
+import { config } from '../config/index.js';
 import {
   User,
   Patient,
@@ -10,7 +10,7 @@ import {
   Appointment,
   ClinicalAlert,
   EducationalContent,
-} from '../domain/entities';
+} from '../domain/entities.js';
 import {
   initialUsers,
   initialProfessionals,
@@ -21,7 +21,7 @@ import {
   initialAppointments,
   initialAlerts,
   initialEducationalContents,
-} from './seedData';
+} from './seedData.js';
 
 const { Pool } = pg;
 
@@ -817,7 +817,7 @@ class PostgresDatabase implements IDatabase {
   }
 }
 
-import { SupabaseAdapter } from './supabaseAdapter';
+import { SupabaseAdapter } from './supabaseAdapter.js';
 
 // Database Singleton Factory with Auto-Detection & Fallback
 let databaseInstance: IDatabase;
