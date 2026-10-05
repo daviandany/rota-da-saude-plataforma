@@ -36,20 +36,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState<boolean>(true);
   const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(true);
 
-  // Sincroniza o token do AuthContext com o interceptor do Axios para anexá-lo a todas as requisições
+  // Sincroniza o token do AuthContext com a instância do Axios
   useLayoutEffect(() => {
     setAuthToken(token);
-
-    const requestInterceptor = apiClient.interceptors.request.use(
-      (config) => {
-        if (token) {
-          config.headers = config.headers || {};
-          config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
 
     const responseInterceptor = apiClient.interceptors.response.use(
       (response) => response,
@@ -64,7 +53,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
 
     return () => {
-      apiClient.interceptors.request.eject(requestInterceptor);
       apiClient.interceptors.response.eject(responseInterceptor);
     };
   }, [token]);

@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { getAuth } from 'firebase/auth';
+import './firebase';
 import {
   User,
   PatientSummary,
@@ -38,14 +40,17 @@ export const apiClient = axios.create({
   },
 });
 
-// Interceptor de Requisição: anexa automaticamente o token JWT armazenado no AuthContext
+// Interceptor de Requisição: obtém o token de getAuth().currentUser?.getIdToken() (com fallback para o token do AuthContext) e adiciona o header Authorization: Bearer <token>
 apiClient.interceptors.request.use(
-  (config) => {
-    const token = getAuthToken();
+  async (config) => {
+    const firebaseToken = await getAuth().currentUser?.getIdToken();
+    const token = firebaseToken || getAuthToken();
+
     if (token) {
       config.headers = config.headers || {};
       config.headers.Authorization = `Bearer ${token}`;
     }
+
     return config;
   },
   (error) => Promise.reject(error)
