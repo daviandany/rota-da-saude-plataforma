@@ -1,3 +1,4 @@
+import axios from 'axios';
 import {
   User,
   PatientSummary,
@@ -13,35 +14,76 @@ import { FirestoreClinicalService } from './firestoreService';
 
 const API_BASE = '/api';
 
-function getAuthHeaders(): HeadersInit {
-  const token = localStorage.getItem('token');
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
+// Token armazenado e sincronizado com o AuthContext
+let authContextToken: string | null = localStorage.getItem('token');
+
+export function setAuthToken(token: string | null) {
+  authContextToken = token;
+  if (token) {
+    localStorage.setItem('token', token);
+  } else {
+    localStorage.removeItem('token');
+  }
 }
+
+export function getAuthToken(): string | null {
+  return authContextToken || localStorage.getItem('token');
+}
+
+// Instância central do Axios para todas as chamadas de API ao backend
+export const apiClient = axios.create({
+  baseURL: API_BASE,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Interceptor de Requisição: anexa automaticamente o token JWT armazenado no AuthContext
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = getAuthToken();
+    if (token) {
+      config.headers = config.headers || {};
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+// Interceptor de Resposta: padroniza mensagens de erro vindas do backend
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const message =
+      error.response?.data?.error ||
+      error.response?.data?.message ||
+      error.message ||
+      'Erro na comunicação com o servidor';
+    return Promise.reject(new Error(message));
+  }
+);
 
 export const api = {
   // Auth
-  async login(email: string, password: string, name?: string, role?: string): Promise<{ token: string; user: User }> {
-    const res = await fetch(`${API_BASE}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, name, role }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Falha no login');
+  async login(
+    email: string,
+    password: string,
+    name?: string,
+    role?: string
+  ): Promise<{ token: string; user: User }> {
+    const { data } = await apiClient.post('/auth/login', { email, password, name, role });
+    if (data.token) {
+      setAuthToken(data.token);
+    }
     return data;
   },
 
   async register(payload: any): Promise<{ token: string; user: User }> {
-    const res = await fetch(`${API_BASE}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Falha no cadastro');
+    const { data } = await apiClient.post('/auth/register', payload);
+    if (data.token) {
+      setAuthToken(data.token);
+    }
     return data;
   },
 
@@ -58,13 +100,7 @@ export const api = {
       sentAt: string;
     };
   }> {
-    const res = await fetch(`${API_BASE}/auth/forgot-password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Falha ao solicitar recuperação de senha.');
+    const { data } = await apiClient.post('/auth/forgot-password', { email });
     return data;
   },
 
@@ -74,13 +110,7 @@ export const api = {
     email: string;
     userName: string;
   }> {
-    const res = await fetch(`${API_BASE}/auth/verify-reset-token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Link de recuperação inválido ou expirado.');
+    const { data } = await apiClient.post('/auth/verify-reset-token', { token });
     return data;
   },
 
@@ -89,13 +119,7 @@ export const api = {
     message: string;
     email: string;
   }> {
-    const res = await fetch(`${API_BASE}/auth/reset-password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, newPassword }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Falha ao redefinir senha.');
+    const { data } = await apiClient.post('/auth/reset-password', { token, newPassword });
     return data;
   },
 
@@ -106,22 +130,15 @@ export const api = {
     photoURL?: string;
     role: string;
   }): Promise<{ token: string; user: User }> {
-    const res = await fetch(`${API_BASE}/auth/google-firebase`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Falha na autenticação Google');
+    const { data } = await apiClient.post('/auth/google-firebase', payload);
+    if (data.token) {
+      setAuthToken(data.token);
+    }
     return data;
   },
 
   async getMe(): Promise<User> {
-    const res = await fetch(`${API_BASE}/auth/me`, {
-      headers: getAuthHeaders(),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Sessão expirada');
+    const { data } = await apiClient.get('/auth/me');
     return data.user;
   },
 
@@ -136,24 +153,15 @@ export const api = {
     specialty?: string;
     riskLevel?: string;
   }): Promise<{ success: boolean; user: User }> {
-    const res = await fetch(`${API_BASE}/auth/profile`, {
-      method: 'PUT',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Falha ao atualizar dados cadastrais');
+    const { data } = await apiClient.put('/auth/profile', payload);
     return data;
   },
 
   // Clinical (Patient)
   async getSummary(patientId?: string): Promise<PatientSummary> {
-    const query = patientId ? `?patientId=${patientId}` : '';
-    const res = await fetch(`${API_BASE}/clinical/summary${query}`, {
-      headers: getAuthHeaders(),
+    const { data } = await apiClient.get('/clinical/summary', {
+      params: patientId ? { patientId } : undefined,
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao carregar resumo clínico');
     return data.data;
   },
 
@@ -165,13 +173,7 @@ export const api = {
     recordedAt?: string;
     notes?: string;
   }): Promise<BloodPressureRecord> {
-    const res = await fetch(`${API_BASE}/clinical/pressure`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao registrar pressão');
+    const { data } = await apiClient.post('/clinical/pressure', payload);
     const record = data.data;
 
     try {
@@ -190,13 +192,7 @@ export const api = {
     recordedAt?: string;
     notes?: string;
   }): Promise<GlucoseRecord> {
-    const res = await fetch(`${API_BASE}/clinical/glucose`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao registrar glicemia');
+    const { data } = await apiClient.post('/clinical/glucose', payload);
     const record = data.data;
 
     try {
@@ -209,23 +205,17 @@ export const api = {
   },
 
   async getHistory(patientId?: string, timeframe: string = '7d'): Promise<any> {
-    const p = patientId ? `patientId=${patientId}&` : '';
-    const res = await fetch(`${API_BASE}/clinical/history?${p}timeframe=${timeframe}`, {
-      headers: getAuthHeaders(),
+    const { data } = await apiClient.get('/clinical/history', {
+      params: { ...(patientId ? { patientId } : {}), timeframe },
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao carregar histórico');
     return data.data;
   },
 
   // Medications
   async getMedications(patientId?: string): Promise<Medication[]> {
-    const query = patientId ? `?patientId=${patientId}` : '';
-    const res = await fetch(`${API_BASE}/medications${query}`, {
-      headers: getAuthHeaders(),
+    const { data } = await apiClient.get('/medications', {
+      params: patientId ? { patientId } : undefined,
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao carregar medicamentos');
     return data.data;
   },
 
@@ -237,13 +227,7 @@ export const api = {
     reminderTimes: string[];
     notes?: string;
   }): Promise<Medication> {
-    const res = await fetch(`${API_BASE}/medications`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao adicionar medicamento');
+    const { data } = await apiClient.post('/medications', payload);
     const med = data.data;
 
     try {
@@ -256,13 +240,7 @@ export const api = {
   },
 
   async updateMedicationStatus(id: string, status: string): Promise<Medication> {
-    const res = await fetch(`${API_BASE}/medications/${id}/status`, {
-      method: 'PATCH',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ status }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao atualizar medicamento');
+    const { data } = await apiClient.patch(`/medications/${id}/status`, { status });
 
     try {
       await FirestoreClinicalService.updateMedicationStatus(id, status as any);
@@ -275,12 +253,9 @@ export const api = {
 
   // Appointments
   async getAppointments(patientId?: string): Promise<Appointment[]> {
-    const query = patientId ? `?patientId=${patientId}` : '';
-    const res = await fetch(`${API_BASE}/appointments${query}`, {
-      headers: getAuthHeaders(),
+    const { data } = await apiClient.get('/appointments', {
+      params: patientId ? { patientId } : undefined,
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao carregar consultas');
     let list: Appointment[] = data.data || [];
 
     if (FirestoreClinicalService.isAuthReady()) {
@@ -302,13 +277,7 @@ export const api = {
   },
 
   async createAppointment(payload: any): Promise<Appointment> {
-    const res = await fetch(`${API_BASE}/appointments`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao agendar consulta');
+    const { data } = await apiClient.post('/appointments', payload);
     const app = data.data;
 
     try {
@@ -322,24 +291,17 @@ export const api = {
 
   // Alerts
   async getAlerts(patientId?: string, severity?: string): Promise<ClinicalAlert[]> {
-    const params = new URLSearchParams();
-    if (patientId) params.append('patientId', patientId);
-    if (severity) params.append('severity', severity);
-    const query = params.toString() ? `?${params.toString()}` : '';
-    const res = await fetch(`${API_BASE}/alerts${query}`, {
-      headers: getAuthHeaders(),
+    const { data } = await apiClient.get('/alerts', {
+      params: {
+        ...(patientId ? { patientId } : {}),
+        ...(severity ? { severity } : {}),
+      },
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao carregar alertas');
     return data.data;
   },
 
   async resolveAlert(id: string): Promise<boolean> {
-    const res = await fetch(`${API_BASE}/alerts/${id}/resolve`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-    });
-    const data = await res.json();
+    const { data } = await apiClient.post(`/alerts/${id}/resolve`);
     try {
       await FirestoreClinicalService.resolveClinicalAlert(id);
     } catch (e) {
@@ -350,35 +312,28 @@ export const api = {
 
   // Educational
   async getEducational(category?: string, type?: string): Promise<EducationalContent[]> {
-    const params = new URLSearchParams();
-    if (category) params.append('category', category);
-    if (type) params.append('type', type);
-    const query = params.toString() ? `?${params.toString()}` : '';
-    const res = await fetch(`${API_BASE}/content/educational${query}`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao carregar conteúdos');
+    const { data } = await apiClient.get('/content/educational', {
+      params: {
+        ...(category ? { category } : {}),
+        ...(type ? { type } : {}),
+      },
+    });
     return data.data;
   },
 
   // Doctor Portal
   async getDoctorDashboard(): Promise<any> {
-    const res = await fetch(`${API_BASE}/doctor/dashboard`, {
-      headers: getAuthHeaders(),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao carregar dashboard médico');
+    const { data } = await apiClient.get('/doctor/dashboard');
     return data.data;
   },
 
   async getDoctorPatients(search?: string, risk?: string): Promise<Patient[]> {
-    const params = new URLSearchParams();
-    if (search) params.append('search', search);
-    if (risk) params.append('risk', risk);
-    const query = params.toString() ? `?${params.toString()}` : '';
-    const res = await fetch(`${API_BASE}/doctor/patients${query}`, {
-      headers: getAuthHeaders(),
+    const { data } = await apiClient.get('/doctor/patients', {
+      params: {
+        ...(search ? { search } : {}),
+        ...(risk ? { risk } : {}),
+      },
     });
-    const data = await res.json();
     let patients: Patient[] = data.data || [];
 
     // Mescla pacientes persistidos no Firestore se autenticado
@@ -400,92 +355,57 @@ export const api = {
   },
 
   async getPatientProfile(patientId: string): Promise<any> {
-    const res = await fetch(`${API_BASE}/doctor/patients/${patientId}`, {
-      headers: getAuthHeaders(),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao buscar prontuário do paciente');
+    const { data } = await apiClient.get(`/doctor/patients/${patientId}`);
     return data.data;
   },
 
   // Reports
   async getReport(patientId?: string): Promise<any> {
-    const query = patientId ? `?patientId=${patientId}` : '';
-    const res = await fetch(`${API_BASE}/reports/summary${query}`, {
-      headers: getAuthHeaders(),
+    const { data } = await apiClient.get('/reports/summary', {
+      params: patientId ? { patientId } : undefined,
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao gerar relatório');
     return data.data;
   },
 
   // Health
   async checkHealth(): Promise<any> {
-    const res = await fetch(`${API_BASE}/health`);
-    return res.json();
+    const { data } = await apiClient.get('/health');
+    return data;
   },
 
   // Firebase Cloud Messaging (FCM) & Push Notifications
   async registerFCMToken(token: string, platform: string = 'web'): Promise<any> {
-    const res = await fetch(`${API_BASE}/notifications/register-token`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ token, platform }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao registrar token FCM');
+    const { data } = await apiClient.post('/notifications/register-token', { token, platform });
     return data;
   },
 
   async getNotifications(): Promise<{ data: any[]; unreadCount: number }> {
-    const res = await fetch(`${API_BASE}/notifications`, {
-      headers: getAuthHeaders(),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao obter notificações');
+    const { data } = await apiClient.get('/notifications');
     return data;
   },
 
   async markNotificationAsRead(id: string): Promise<any> {
-    const res = await fetch(`${API_BASE}/notifications/${id}/read`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-    });
-    return res.json();
+    const { data } = await apiClient.post(`/notifications/${id}/read`);
+    return data;
   },
 
   async markAllNotificationsAsRead(): Promise<any> {
-    const res = await fetch(`${API_BASE}/notifications/read-all`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-    });
-    return res.json();
+    const { data } = await apiClient.post('/notifications/read-all');
+    return data;
   },
 
   async testMedicationReminder(): Promise<any> {
-    const res = await fetch(`${API_BASE}/notifications/test-medication`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao testar lembrete de medicação');
+    const { data } = await apiClient.post('/notifications/test-medication');
     return data;
   },
 
   async testCriticalReading(type: 'PRESSURE' | 'GLUCOSE' = 'PRESSURE'): Promise<any> {
-    const res = await fetch(`${API_BASE}/notifications/test-critical-reading`, {
-      method: 'POST',
-      headers: getAuthHeaders(),
-      body: JSON.stringify({ type }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Erro ao testar alerta crítico');
+    const { data } = await apiClient.post('/notifications/test-critical-reading', { type });
     return data;
   },
 
   async getFCMConfig(): Promise<any> {
-    const res = await fetch(`${API_BASE}/notifications/fcm-config`);
-    return res.json();
+    const { data } = await apiClient.get('/notifications/fcm-config');
+    return data;
   },
 };
-

@@ -319,6 +319,7 @@ export const appointmentController = {
       let pName = patientName;
       let pConditions = patientConditions;
       let pAge = patientAge;
+      let pUnit = clinicName;
 
       if (targetPatientId) {
         const patient = await db.getPatientById(targetPatientId);
@@ -326,6 +327,7 @@ export const appointmentController = {
           pName = pName || patient.name;
           pConditions = pConditions || patient.conditions;
           pAge = pAge || patient.age;
+          pUnit = pUnit || patient.healthcareUnit;
         }
       }
 
@@ -336,7 +338,7 @@ export const appointmentController = {
         patientAge: pAge || 45,
         appointmentType: appointmentType || 'Consulta de Rotina Hiperdia',
         scheduledFor: scheduledFor || new Date(Date.now() + 86400000 * 3).toISOString(),
-        clinicName: clinicName || (req.user?.profile as any)?.healthcareUnit || 'UBS de Referência',
+        clinicName: pUnit || 'UBS de Referência',
         doctorName: doctorName || 'Equipe de Saúde da Família',
         notes: notes || 'Consulta agendada no sistema.',
       });

@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useLayoutEffect } from 'react';
 import { User, UserRole } from '../types';
-import { api } from '../services/api';
+import { api, apiClient, setAuthToken } from '../services/api';
 import { signInWithGoogle, signOutFirebase, auth } from '../services/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { FirestoreClinicalService } from '../services/firestoreService';
@@ -32,9 +32,42 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
   const [loading, setLoading] = useState<boolean>(true);
   const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(true);
+
+  // Sincroniza o token do AuthContext com o interceptor do Axios para anexá-lo a todas as requisições
+  useLayoutEffect(() => {
+    setAuthToken(token);
+
+    const requestInterceptor = apiClient.interceptors.request.use(
+      (config) => {
+        if (token) {
+          config.headers = config.headers || {};
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
+
+    const responseInterceptor = apiClient.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401) {
+          setAuthToken(null);
+          setToken(null);
+          setUser(null);
+        }
+        return Promise.reject(error);
+      }
+    );
+
+    return () => {
+      apiClient.interceptors.request.eject(requestInterceptor);
+      apiClient.interceptors.response.eject(responseInterceptor);
+    };
+  }, [token]);
 
   const initAuth = async () => {
     const savedToken = localStorage.getItem('token');
@@ -43,12 +76,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    setAuthToken(savedToken);
+    setToken(savedToken);
+
     try {
       const me = await api.getMe();
       setUser(me);
     } catch (e) {
       console.warn('Sessão expirada, limpando token.');
-      localStorage.removeItem('token');
+      setAuthToken(null);
       setToken(null);
       setUser(null);
     } finally {
@@ -73,7 +109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       const res = await api.login(email, pass, name, role);
-      localStorage.setItem('token', res.token);
+      setAuthToken(res.token);
       setToken(res.token);
       setUser(res.user);
     } finally {
@@ -94,7 +130,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       const res = await api.register(payload);
-      localStorage.setItem('token', res.token);
+      setAuthToken(res.token);
       setToken(res.token);
       setUser(res.user);
     } finally {
@@ -120,7 +156,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role,
       });
 
-      localStorage.setItem('token', res.token);
+      setAuthToken(res.token);
       setToken(res.token);
       setUser(res.user);
       setIsFirebaseConnected(true);
@@ -145,7 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const email = role === 'PATIENT' ? 'maria.silva@email.com' : 'carlos.mendes@saude.gov.br';
       const pass = role === 'PATIENT' ? 'paciente123' : 'medico123';
       const res = await api.login(email, pass);
-      localStorage.setItem('token', res.token);
+      setAuthToken(res.token);
       setToken(res.token);
       setUser(res.user);
     } finally {
@@ -154,7 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
-    localStorage.removeItem('token');
+    setAuthToken(null);
     setToken(null);
     setUser(null);
     await signOutFirebase();
