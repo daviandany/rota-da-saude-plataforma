@@ -19,6 +19,11 @@ import {
   saveMedicationToSupabase,
   saveAppointmentToSupabase,
   saveUserProfileToSupabase,
+  fetchBloodPressureFromSupabase,
+  fetchGlucoseFromSupabase,
+  fetchMedicationsFromSupabase,
+  fetchAppointmentsFromSupabase,
+  fetchPatientsFromSupabase,
 } from './supabaseClient';
 
 const API_BASE = '/api';
@@ -208,6 +213,7 @@ export const api = {
 
     try {
       await saveBloodPressureToSupabase({
+        id: record.id,
         patientId: record.patientId,
         systolic: record.systolic,
         diastolic: record.diastolic,
@@ -241,6 +247,7 @@ export const api = {
 
     try {
       await saveGlucoseToSupabase({
+        id: record.id,
         patientId: record.patientId,
         glucoseValue: record.glucoseValue,
         moment: record.moment,
@@ -265,7 +272,34 @@ export const api = {
     const { data } = await apiClient.get('/clinical/history', {
       params: { ...(patientId ? { patientId } : {}), timeframe },
     });
-    return data.data;
+    const result = data.data;
+
+    try {
+      const [supaBP, supaGlu] = await Promise.all([
+        fetchBloodPressureFromSupabase(patientId),
+        fetchGlucoseFromSupabase(patientId),
+      ]);
+      if (supaBP.length > 0) {
+        const bpMap = new Map<string, BloodPressureRecord>();
+        (result.pressureRecords || []).forEach((r: BloodPressureRecord) => bpMap.set(r.id, r));
+        supaBP.forEach((r) => bpMap.set(r.id, r));
+        result.pressureRecords = Array.from(bpMap.values()).sort(
+          (a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()
+        );
+      }
+      if (supaGlu.length > 0) {
+        const gluMap = new Map<string, GlucoseRecord>();
+        (result.glucoseRecords || []).forEach((g: GlucoseRecord) => gluMap.set(g.id, g));
+        supaGlu.forEach((g) => gluMap.set(g.id, g));
+        result.glucoseRecords = Array.from(gluMap.values()).sort(
+          (a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()
+        );
+      }
+    } catch {
+      // Ignora caso Supabase ainda não possua as tabelas criadas
+    }
+
+    return result;
   },
 
   // Medications
@@ -273,7 +307,21 @@ export const api = {
     const { data } = await apiClient.get('/medications', {
       params: patientId ? { patientId } : undefined,
     });
-    return data.data;
+    let list: Medication[] = data.data || [];
+
+    try {
+      const supaMeds = await fetchMedicationsFromSupabase(patientId);
+      if (supaMeds.length > 0) {
+        const map = new Map<string, Medication>();
+        list.forEach((m) => map.set(m.id, m));
+        supaMeds.forEach((m) => map.set(m.id, m));
+        list = Array.from(map.values());
+      }
+    } catch {
+      // Ignora erro de leitura opcional
+    }
+
+    return list;
   },
 
   async addMedication(payload: {
@@ -289,6 +337,7 @@ export const api = {
 
     try {
       await saveMedicationToSupabase({
+        id: med.id,
         patientId: med.patientId,
         name: med.name,
         dosage: med.dosage,
@@ -329,6 +378,20 @@ export const api = {
     });
     let list: Appointment[] = data.data || [];
 
+    try {
+      const supaApps = await fetchAppointmentsFromSupabase(patientId);
+      if (supaApps.length > 0) {
+        const map = new Map<string, Appointment>();
+        list.forEach((a) => map.set(a.id, a));
+        supaApps.forEach((a) => map.set(a.id, a));
+        list = Array.from(map.values()).sort(
+          (a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime()
+        );
+      }
+    } catch {
+      // Ignora erro de leitura opcional
+    }
+
     if (FirestoreClinicalService.isAuthReady()) {
       try {
         const fsApps = await FirestoreClinicalService.getAppointments(patientId);
@@ -353,6 +416,7 @@ export const api = {
 
     try {
       await saveAppointmentToSupabase({
+        id: app.id,
         patientId: app.patientId,
         patientName: app.patientName,
         patientAge: app.patientAge,

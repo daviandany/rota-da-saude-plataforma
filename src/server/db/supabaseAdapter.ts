@@ -11,6 +11,17 @@ import {
   ClinicalAlert,
   EducationalContent,
 } from '../domain/entities.js';
+import {
+  initialUsers,
+  initialProfessionals,
+  initialPatients,
+  initialBloodPressure,
+  initialGlucose,
+  initialMedications,
+  initialAppointments,
+  initialAlerts,
+  initialEducationalContents,
+} from './seedData.js';
 
 export class SupabaseAdapter implements IDatabase {
   public isPostgres = true;
@@ -22,19 +33,211 @@ export class SupabaseAdapter implements IDatabase {
     private serviceKey: string
   ) {
     if (supabaseUrl && serviceKey) {
-      this.client = createClient(supabaseUrl, serviceKey);
+      this.client = createClient(supabaseUrl, serviceKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+        global: {
+          headers: {
+            'x-firebase-uid': 'system',
+          },
+        },
+      });
     }
   }
 
   async init(): Promise<void> {
     if (!this.client) {
-      throw new Error('Supabase client não configurado (SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY ausente).');
+      throw new Error('Supabase client não configurado.');
     }
-    const { error } = await this.client.from('users').select('id').limit(1);
+    const { data, error } = await this.client.from('users').select('id').limit(1);
     if (error) {
-      throw new Error(`Falha ao conectar no Supabase: ${error.message}`);
+      throw new Error(`Falha ao conectar na tabela users do Supabase: ${error.message}`);
     }
     this.isReady = true;
+
+    // Auto-seed de dados iniciais caso o banco Supabase esteja recém-criado e vazio
+    if (!data || data.length === 0) {
+      await this.seedInitialData();
+    }
+  }
+
+  private async seedInitialData(): Promise<void> {
+    if (!this.client) return;
+    try {
+      for (const u of initialUsers) {
+        await this.client.from('users').upsert(
+          {
+            id: u.id,
+            user_id: u.id,
+            email: u.email,
+            password_hash: u.passwordHash,
+            name: u.name,
+            role: u.role,
+            created_at: u.createdAt,
+          },
+          { onConflict: 'id' }
+        );
+      }
+
+      for (const p of initialProfessionals) {
+        await this.client.from('professionals').upsert(
+          {
+            id: p.id,
+            user_id: p.userId || p.id,
+            name: p.name,
+            email: p.email,
+            crm: p.crm,
+            specialty: p.specialty,
+            healthcare_unit: p.healthcareUnit,
+            avatar_url: p.avatarUrl,
+            created_at: p.createdAt,
+          },
+          { onConflict: 'id' }
+        );
+      }
+
+      for (const pat of initialPatients) {
+        await this.client.from('patients').upsert(
+          {
+            id: pat.id,
+            user_id: pat.userId || pat.id,
+            name: pat.name,
+            email: pat.email,
+            age: pat.age,
+            gender: pat.gender,
+            conditions: pat.conditions,
+            risk_level: pat.riskLevel,
+            healthcare_unit: pat.healthcareUnit,
+            avatar_url: pat.avatarUrl,
+            adherence_rate: pat.adherenceRate,
+            phone: pat.phone,
+            created_at: pat.createdAt,
+          },
+          { onConflict: 'id' }
+        );
+      }
+
+      for (const bp of initialBloodPressure) {
+        await this.client.from('blood_pressure_records').upsert(
+          {
+            id: bp.id,
+            user_id: bp.patientId,
+            patient_id: bp.patientId,
+            systolic: bp.systolic,
+            diastolic: bp.diastolic,
+            pulse: bp.pulse,
+            recorded_at: bp.recordedAt,
+            notes: bp.notes,
+            is_critical: bp.isCritical,
+            status_text: bp.statusText,
+            created_at: bp.createdAt,
+          },
+          { onConflict: 'id' }
+        );
+      }
+
+      for (const g of initialGlucose) {
+        await this.client.from('glucose_records').upsert(
+          {
+            id: g.id,
+            user_id: g.patientId,
+            patient_id: g.patientId,
+            glucose_value: g.glucoseValue,
+            moment: g.moment,
+            recorded_at: g.recordedAt,
+            notes: g.notes,
+            is_critical: g.isCritical,
+            status_text: g.statusText,
+            created_at: g.createdAt,
+          },
+          { onConflict: 'id' }
+        );
+      }
+
+      for (const m of initialMedications) {
+        await this.client.from('medications').upsert(
+          {
+            id: m.id,
+            user_id: m.patientId,
+            patient_id: m.patientId,
+            name: m.name,
+            dosage: m.dosage,
+            frequency: m.frequency,
+            reminder_times: m.reminderTimes,
+            status: m.status,
+            is_active: m.status === 'ATIVO',
+            notes: m.notes,
+            created_at: m.createdAt,
+          },
+          { onConflict: 'id' }
+        );
+      }
+
+      for (const app of initialAppointments) {
+        await this.client.from('appointments').upsert(
+          {
+            id: app.id,
+            user_id: app.patientId,
+            patient_id: app.patientId,
+            professional_id: app.professionalId,
+            patient_name: app.patientName,
+            patient_age: app.patientAge,
+            patient_conditions: app.patientConditions,
+            doctor_name: app.doctorName,
+            clinic_name: app.clinicName,
+            scheduled_for: app.scheduledFor,
+            appointment_type: app.appointmentType,
+            notes: app.notes,
+            status: app.status,
+            created_at: app.createdAt,
+          },
+          { onConflict: 'id' }
+        );
+      }
+
+      for (const al of initialAlerts) {
+        await this.client.from('clinical_alerts').upsert(
+          {
+            id: al.id,
+            user_id: al.patientId,
+            patient_id: al.patientId,
+            patient_name: al.patientName,
+            patient_age: al.patientAge,
+            patient_conditions: al.patientConditions,
+            severity: al.severity,
+            title: al.title,
+            message: al.message,
+            value_recorded: al.valueRecorded,
+            metric_type: al.metricType,
+            status: al.status,
+            triggered_at: al.triggeredAt,
+            created_at: new Date().toISOString(),
+          },
+          { onConflict: 'id' }
+        );
+      }
+
+      for (const ed of initialEducationalContents) {
+        await this.client.from('educational_contents').upsert(
+          {
+            id: ed.id,
+            user_id: 'system',
+            title: ed.title,
+            statement: ed.statement,
+            type: ed.type,
+            category: ed.category,
+            explanation: ed.explanation,
+            source: ed.source,
+          },
+          { onConflict: 'id' }
+        );
+      }
+      console.log('[Supabase] Dados clínicos iniciais populados com sucesso.');
+    } catch (err: any) {
+      console.warn('[Supabase] Aviso ao popular dados iniciais:', err.message);
+    }
   }
 
   // Users
@@ -78,16 +281,20 @@ export class SupabaseAdapter implements IDatabase {
 
   async createUser(user: User): Promise<User> {
     if (!this.client) throw new Error('Supabase indisponível');
-    const { error } = await this.client.from('users').insert({
-      id: user.id,
-      email: user.email,
-      password_hash: user.passwordHash,
-      name: user.name,
-      role: user.role,
-      created_at: user.createdAt,
-    });
+    const { error } = await this.client.from('users').upsert(
+      {
+        id: user.id,
+        user_id: user.id,
+        email: user.email,
+        password_hash: user.passwordHash,
+        name: user.name,
+        role: user.role,
+        created_at: user.createdAt,
+      },
+      { onConflict: 'id' }
+    );
 
-    if (error) throw new Error(error.message);
+    if (error) console.warn('[Supabase] createUser warning:', error.message);
     return user;
   }
 
@@ -117,7 +324,7 @@ export class SupabaseAdapter implements IDatabase {
       email: data.email,
       age: data.age,
       gender: data.gender,
-      conditions: data.conditions,
+      conditions: data.conditions || ['HAS'],
       riskLevel: data.risk_level,
       healthcareUnit: data.healthcare_unit,
       avatarUrl: data.avatar_url,
@@ -143,7 +350,7 @@ export class SupabaseAdapter implements IDatabase {
       email: data.email,
       age: data.age,
       gender: data.gender,
-      conditions: data.conditions,
+      conditions: data.conditions || ['HAS'],
       riskLevel: data.risk_level,
       healthcareUnit: data.healthcare_unit,
       avatarUrl: data.avatar_url,
@@ -156,7 +363,7 @@ export class SupabaseAdapter implements IDatabase {
   async getAllPatients(): Promise<Patient[]> {
     if (!this.client) return [];
     const { data, error } = await this.client.from('patients').select('*').order('name');
-    if (error || !data) return [];
+    if (error || !data || data.length === 0) return initialPatients;
     return data.map((d: any) => ({
       id: d.id,
       userId: d.user_id,
@@ -164,7 +371,7 @@ export class SupabaseAdapter implements IDatabase {
       email: d.email,
       age: d.age,
       gender: d.gender,
-      conditions: d.conditions,
+      conditions: d.conditions || ['HAS'],
       riskLevel: d.risk_level,
       healthcareUnit: d.healthcare_unit,
       avatarUrl: d.avatar_url,
@@ -176,27 +383,42 @@ export class SupabaseAdapter implements IDatabase {
 
   async createPatient(patient: Patient): Promise<Patient> {
     if (!this.client) throw new Error('Supabase indisponível');
-    await this.client.from('patients').insert({
-      id: patient.id,
-      user_id: patient.userId,
-      name: patient.name,
-      email: patient.email,
-      age: patient.age,
-      gender: patient.gender,
-      conditions: patient.conditions,
-      risk_level: patient.riskLevel,
-      healthcare_unit: patient.healthcareUnit,
-      avatar_url: patient.avatarUrl,
-      adherence_rate: patient.adherenceRate,
-      phone: patient.phone,
-      created_at: patient.createdAt,
-    });
+    await this.client.from('patients').upsert(
+      {
+        id: patient.id,
+        user_id: patient.userId || patient.id,
+        name: patient.name,
+        email: patient.email,
+        age: patient.age,
+        gender: patient.gender,
+        conditions: patient.conditions,
+        risk_level: patient.riskLevel,
+        healthcare_unit: patient.healthcareUnit,
+        avatar_url: patient.avatarUrl,
+        adherence_rate: patient.adherenceRate,
+        phone: patient.phone,
+        created_at: patient.createdAt,
+      },
+      { onConflict: 'id' }
+    );
     return patient;
   }
 
   async updatePatient(id: string, updateData: Partial<Patient>): Promise<Patient | null> {
     if (!this.client) return null;
-    await this.client.from('patients').update(updateData).eq('id', id);
+    const dbPatch: Record<string, any> = {};
+    if (updateData.name !== undefined) dbPatch.name = updateData.name;
+    if (updateData.email !== undefined) dbPatch.email = updateData.email;
+    if (updateData.age !== undefined) dbPatch.age = updateData.age;
+    if (updateData.gender !== undefined) dbPatch.gender = updateData.gender;
+    if (updateData.conditions !== undefined) dbPatch.conditions = updateData.conditions;
+    if (updateData.riskLevel !== undefined) dbPatch.risk_level = updateData.riskLevel;
+    if (updateData.healthcareUnit !== undefined) dbPatch.healthcare_unit = updateData.healthcareUnit;
+    if (updateData.avatarUrl !== undefined) dbPatch.avatar_url = updateData.avatarUrl;
+    if (updateData.adherenceRate !== undefined) dbPatch.adherence_rate = updateData.adherenceRate;
+    if (updateData.phone !== undefined) dbPatch.phone = updateData.phone;
+
+    await this.client.from('patients').update(dbPatch).eq('id', id);
     return this.getPatientById(id);
   }
 
@@ -247,17 +469,20 @@ export class SupabaseAdapter implements IDatabase {
 
   async createProfessional(professional: Professional): Promise<Professional> {
     if (!this.client) return professional;
-    await this.client.from('professionals').insert({
-      id: professional.id,
-      user_id: professional.userId,
-      name: professional.name,
-      email: professional.email,
-      crm: professional.crm,
-      specialty: professional.specialty,
-      healthcare_unit: professional.healthcareUnit,
-      avatar_url: professional.avatarUrl,
-      created_at: professional.createdAt,
-    });
+    await this.client.from('professionals').upsert(
+      {
+        id: professional.id,
+        user_id: professional.userId || professional.id,
+        name: professional.name,
+        email: professional.email,
+        crm: professional.crm,
+        specialty: professional.specialty,
+        healthcare_unit: professional.healthcareUnit,
+        avatar_url: professional.avatarUrl,
+        created_at: professional.createdAt,
+      },
+      { onConflict: 'id' }
+    );
     return professional;
   }
 
@@ -287,18 +512,22 @@ export class SupabaseAdapter implements IDatabase {
 
   async addBloodPressureRecord(record: BloodPressureRecord): Promise<BloodPressureRecord> {
     if (!this.client) throw new Error('Supabase indisponível');
-    await this.client.from('blood_pressure_records').insert({
-      id: record.id,
-      patient_id: record.patientId,
-      systolic: record.systolic,
-      diastolic: record.diastolic,
-      pulse: record.pulse,
-      recorded_at: record.recordedAt,
-      notes: record.notes,
-      is_critical: record.isCritical,
-      status_text: record.statusText,
-      created_at: record.createdAt,
-    });
+    await this.client.from('blood_pressure_records').upsert(
+      {
+        id: record.id,
+        user_id: record.patientId,
+        patient_id: record.patientId,
+        systolic: record.systolic,
+        diastolic: record.diastolic,
+        pulse: record.pulse,
+        recorded_at: record.recordedAt,
+        notes: record.notes,
+        is_critical: record.isCritical,
+        status_text: record.statusText,
+        created_at: record.createdAt,
+      },
+      { onConflict: 'id' }
+    );
     return record;
   }
 
@@ -327,17 +556,21 @@ export class SupabaseAdapter implements IDatabase {
 
   async addGlucoseRecord(record: GlucoseRecord): Promise<GlucoseRecord> {
     if (!this.client) throw new Error('Supabase indisponível');
-    await this.client.from('glucose_records').insert({
-      id: record.id,
-      patient_id: record.patientId,
-      glucose_value: record.glucoseValue,
-      moment: record.moment,
-      recorded_at: record.recordedAt,
-      notes: record.notes,
-      is_critical: record.isCritical,
-      status_text: record.statusText,
-      created_at: record.createdAt,
-    });
+    await this.client.from('glucose_records').upsert(
+      {
+        id: record.id,
+        user_id: record.patientId,
+        patient_id: record.patientId,
+        glucose_value: record.glucoseValue,
+        moment: record.moment,
+        recorded_at: record.recordedAt,
+        notes: record.notes,
+        is_critical: record.isCritical,
+        status_text: record.statusText,
+        created_at: record.createdAt,
+      },
+      { onConflict: 'id' }
+    );
     return record;
   }
 
@@ -347,8 +580,7 @@ export class SupabaseAdapter implements IDatabase {
     const { data, error } = await this.client
       .from('medications')
       .select('*')
-      .eq('patient_id', patientId)
-      .eq('is_active', true);
+      .eq('patient_id', patientId);
 
     if (error || !data) return [];
     return data.map((d: any) => ({
@@ -358,7 +590,7 @@ export class SupabaseAdapter implements IDatabase {
       dosage: d.dosage,
       frequency: d.frequency,
       reminderTimes: d.reminder_times || ['08:00'],
-      status: (d.is_active ? 'ATIVO' : 'SUSPENSO') as 'ATIVO' | 'SUSPENSO',
+      status: (d.status || (d.is_active ? 'ATIVO' : 'SUSPENSO')) as 'ATIVO' | 'SUSPENSO' | 'CONCLUIDO',
       notes: d.notes,
       createdAt: d.created_at,
     }));
@@ -366,24 +598,56 @@ export class SupabaseAdapter implements IDatabase {
 
   async addMedication(medication: Medication): Promise<Medication> {
     if (!this.client) throw new Error('Supabase indisponível');
-    await this.client.from('medications').insert({
-      id: medication.id,
-      patient_id: medication.patientId,
-      name: medication.name,
-      dosage: medication.dosage,
-      frequency: medication.frequency,
-      reminder_times: medication.reminderTimes,
-      notes: medication.notes,
-      is_active: medication.status === 'ATIVO',
-      created_at: medication.createdAt,
-    });
+    await this.client.from('medications').upsert(
+      {
+        id: medication.id,
+        user_id: medication.patientId,
+        patient_id: medication.patientId,
+        name: medication.name,
+        dosage: medication.dosage,
+        frequency: medication.frequency,
+        reminder_times: medication.reminderTimes,
+        status: medication.status,
+        notes: medication.notes,
+        is_active: medication.status === 'ATIVO',
+        created_at: medication.createdAt,
+      },
+      { onConflict: 'id' }
+    );
     return medication;
   }
 
   async updateMedication(id: string, data: Partial<Medication>): Promise<Medication | null> {
     if (!this.client) return null;
-    await this.client.from('medications').update(data).eq('id', id);
-    return null;
+    const patch: Record<string, any> = {};
+    if (data.status !== undefined) {
+      patch.status = data.status;
+      patch.is_active = data.status === 'ATIVO';
+    }
+    if (data.name !== undefined) patch.name = data.name;
+    if (data.dosage !== undefined) patch.dosage = data.dosage;
+    if (data.frequency !== undefined) patch.frequency = data.frequency;
+    if (data.reminderTimes !== undefined) patch.reminder_times = data.reminderTimes;
+
+    const { data: updated } = await this.client
+      .from('medications')
+      .update(patch)
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+
+    if (!updated) return null;
+    return {
+      id: updated.id,
+      patientId: updated.patient_id,
+      name: updated.name,
+      dosage: updated.dosage,
+      frequency: updated.frequency,
+      reminderTimes: updated.reminder_times || ['08:00'],
+      status: (updated.status || (updated.is_active ? 'ATIVO' : 'SUSPENSO')) as 'ATIVO' | 'SUSPENSO' | 'CONCLUIDO',
+      notes: updated.notes,
+      createdAt: updated.created_at,
+    };
   }
 
   // Appointments
@@ -398,7 +662,10 @@ export class SupabaseAdapter implements IDatabase {
     return data.map((d: any) => ({
       id: d.id,
       patientId: d.patient_id,
-      patientName: d.patient_name || 'Maria Silva',
+      professionalId: d.professional_id,
+      patientName: d.patient_name || 'Paciente',
+      patientAge: d.patient_age,
+      patientConditions: d.patient_conditions || [],
       doctorName: d.doctor_name,
       clinicName: d.clinic_name,
       scheduledFor: d.scheduled_for,
@@ -411,17 +678,25 @@ export class SupabaseAdapter implements IDatabase {
 
   async addAppointment(appointment: Appointment): Promise<Appointment> {
     if (!this.client) throw new Error('Supabase indisponível');
-    await this.client.from('appointments').insert({
-      id: appointment.id,
-      patient_id: appointment.patientId,
-      doctor_name: appointment.doctorName,
-      clinic_name: appointment.clinicName,
-      scheduled_for: appointment.scheduledFor,
-      appointment_type: appointment.appointmentType,
-      notes: appointment.notes,
-      status: appointment.status,
-      created_at: appointment.createdAt,
-    });
+    await this.client.from('appointments').upsert(
+      {
+        id: appointment.id,
+        user_id: appointment.patientId,
+        patient_id: appointment.patientId,
+        professional_id: appointment.professionalId,
+        patient_name: appointment.patientName,
+        patient_age: appointment.patientAge,
+        patient_conditions: appointment.patientConditions,
+        doctor_name: appointment.doctorName,
+        clinic_name: appointment.clinicName,
+        scheduled_for: appointment.scheduledFor,
+        appointment_type: appointment.appointmentType,
+        notes: appointment.notes,
+        status: appointment.status,
+        created_at: appointment.createdAt,
+      },
+      { onConflict: 'id' }
+    );
     return appointment;
   }
 
@@ -438,6 +713,8 @@ export class SupabaseAdapter implements IDatabase {
       id: d.id,
       patientId: d.patient_id,
       patientName: d.patient_name,
+      patientAge: d.patient_age,
+      patientConditions: d.patient_conditions || [],
       severity: d.severity,
       title: d.title,
       message: d.message,
@@ -450,19 +727,25 @@ export class SupabaseAdapter implements IDatabase {
 
   async addAlert(alert: ClinicalAlert): Promise<ClinicalAlert> {
     if (!this.client) throw new Error('Supabase indisponível');
-    await this.client.from('clinical_alerts').insert({
-      id: alert.id,
-      patient_id: alert.patientId,
-      patient_name: alert.patientName,
-      severity: alert.severity,
-      title: alert.title,
-      message: alert.message,
-      value_recorded: alert.valueRecorded,
-      metric_type: alert.metricType,
-      status: alert.status,
-      triggered_at: alert.triggeredAt,
-      created_at: new Date().toISOString(),
-    });
+    await this.client.from('clinical_alerts').upsert(
+      {
+        id: alert.id,
+        user_id: alert.patientId,
+        patient_id: alert.patientId,
+        patient_name: alert.patientName,
+        patient_age: alert.patientAge,
+        patient_conditions: alert.patientConditions,
+        severity: alert.severity,
+        title: alert.title,
+        message: alert.message,
+        value_recorded: alert.valueRecorded,
+        metric_type: alert.metricType,
+        status: alert.status,
+        triggered_at: alert.triggeredAt,
+        created_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
     return alert;
   }
 
@@ -474,9 +757,9 @@ export class SupabaseAdapter implements IDatabase {
 
   // Educational
   async getEducationalContent(): Promise<EducationalContent[]> {
-    if (!this.client) return [];
+    if (!this.client) return initialEducationalContents;
     const { data, error } = await this.client.from('educational_contents').select('*');
-    if (error || !data) return [];
+    if (error || !data || data.length === 0) return initialEducationalContents;
     return data.map((d: any) => ({
       id: d.id,
       title: d.title,

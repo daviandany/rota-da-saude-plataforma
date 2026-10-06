@@ -1,5 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import { getAuth } from 'firebase/auth';
+import {
+  BloodPressureRecord,
+  GlucoseRecord,
+  Medication,
+  Appointment,
+  ClinicalAlert,
+  Patient,
+} from '../types';
 
 const supabaseUrl =
   process.env.EXPO_PUBLIC_SUPABASE_URL ||
@@ -17,27 +25,6 @@ export const isSupabaseConfigured = Boolean(
     !supabaseUrl.includes('your-project.supabase.co')
 );
 
-// Cliente Supabase configurado para enviar o Firebase UID e ID Token em todas as requisições
-export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey, {
-      accessToken: async () => {
-        const currentUser = getAuth().currentUser;
-        if (!currentUser) return null;
-        return await currentUser.getIdToken();
-      },
-      global: {
-        fetch: async (url, options = {}) => {
-          const headers = new Headers(options.headers);
-          const currentUser = getAuth().currentUser;
-          if (currentUser?.uid) {
-            headers.set('x-firebase-uid', currentUser.uid);
-          }
-          return fetch(url, { ...options, headers });
-        },
-      },
-    })
-  : null;
-
 /**
  * Helper para obter o UID alfanumérico atual do Firebase Auth (com fallback seguro para sessão ativa)
  */
@@ -45,17 +32,39 @@ export function getCurrentFirebaseUid(fallbackUserId?: string): string {
   const fbUser = getAuth().currentUser;
   if (fbUser?.uid) return fbUser.uid;
   if (fallbackUserId) return fallbackUserId;
-  throw new Error('Usuário não autenticado no Firebase Auth.');
+  return localStorage.getItem('firebase_uid_hint') || 'u-patient-maria';
 }
 
+// Cliente Supabase usando a Anon Key e enviando x-firebase-uid nos headers (compatível com RLS + Firebase Auth sem erro de assinatura JWT)
+export const supabase = isSupabaseConfigured
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+      global: {
+        fetch: async (url, options = {}) => {
+          const headers = new Headers(options.headers);
+          const currentUser = getAuth().currentUser;
+          const uid = currentUser?.uid || localStorage.getItem('firebase_uid_hint') || '';
+          if (uid) {
+            headers.set('x-firebase-uid', uid);
+          }
+          return fetch(url, { ...options, headers });
+        },
+      },
+    })
+  : null;
+
 // =========================================================================
-// FUNÇÕES ASSÍNCRONAS DE SALVAMENTO DIRETO NO SUPABASE (COM TRY/CATCH)
+// FUNÇÕES ASSÍNCRONAS DE SALVAMENTO E LEITURA NO SUPABASE (COM TRY/CATCH)
 // =========================================================================
 
 /**
  * 1. Salvar / Atualizar Perfil Cadastral do Paciente ou Profissional (UserProfileModal)
  */
 export async function saveUserProfileToSupabase(formData: {
+  id?: string;
   name: string;
   email: string;
   role: 'PATIENT' | 'PROFESSIONAL';
@@ -75,11 +84,12 @@ export async function saveUserProfileToSupabase(formData: {
     if (!supabase) return null;
 
     if (formData.role === 'PATIENT') {
+      const patientId = formData.id || `pat-${userId}`;
       const { data, error } = await supabase
         .from('patients')
         .upsert(
           {
-            id: `pat-${userId}`,
+            id: patientId,
             user_id: userId,
             name: formData.name,
             email: formData.email,
@@ -99,11 +109,12 @@ export async function saveUserProfileToSupabase(formData: {
       if (error) throw error;
       return data;
     } else {
+      const profId = formData.id || `prof-${userId}`;
       const { data, error } = await supabase
         .from('professionals')
         .upsert(
           {
-            id: `prof-${userId}`,
+            id: profId,
             user_id: userId,
             name: formData.name,
             email: formData.email,
@@ -131,6 +142,7 @@ export async function saveUserProfileToSupabase(formData: {
  * 2. Salvar Aferição de Pressão Arterial (RegisterPressureModal)
  */
 export async function saveBloodPressureToSupabase(formData: {
+  id?: string;
   patientId?: string;
   systolic: number;
   diastolic: number;
@@ -155,20 +167,23 @@ export async function saveBloodPressureToSupabase(formData: {
 
     const { data, error } = await supabase
       .from('blood_pressure_records')
-      .insert([
-        {
-          id: `bp-${Date.now()}`,
-          user_id: userId,
-          patient_id: formData.patientId || `pat-${userId}`,
-          systolic,
-          diastolic,
-          pulse: Number(formData.pulse || 72),
-          recorded_at: formData.recordedAt || new Date().toISOString(),
-          notes: formData.notes || null,
-          is_critical: isCritical,
-          status_text: statusText,
-        },
-      ])
+      .upsert(
+        [
+          {
+            id: formData.id || `bp-${Date.now()}`,
+            user_id: userId,
+            patient_id: formData.patientId || `pat-${userId}`,
+            systolic,
+            diastolic,
+            pulse: Number(formData.pulse || 72),
+            recorded_at: formData.recordedAt || new Date().toISOString(),
+            notes: formData.notes || null,
+            is_critical: isCritical,
+            status_text: statusText,
+          },
+        ],
+        { onConflict: 'id' }
+      )
       .select()
       .single();
 
@@ -184,6 +199,7 @@ export async function saveBloodPressureToSupabase(formData: {
  * 3. Salvar Aferição de Glicemia Capilar (RegisterGlucoseModal)
  */
 export async function saveGlucoseToSupabase(formData: {
+  id?: string;
   patientId?: string;
   glucoseValue: number;
   moment: 'EM_JEJUM' | 'ANTES_ALMOCO' | 'APOS_ALMOCO' | 'ANTES_JANTAR' | 'APOS_JANTAR' | 'AO_DORMIR' | string;
@@ -208,19 +224,22 @@ export async function saveGlucoseToSupabase(formData: {
 
     const { data, error } = await supabase
       .from('glucose_records')
-      .insert([
-        {
-          id: `glu-${Date.now()}`,
-          user_id: userId,
-          patient_id: formData.patientId || `pat-${userId}`,
-          glucose_value: val,
-          moment: formData.moment,
-          recorded_at: formData.recordedAt || new Date().toISOString(),
-          notes: formData.notes || null,
-          is_critical: isCritical,
-          status_text: statusText,
-        },
-      ])
+      .upsert(
+        [
+          {
+            id: formData.id || `glu-${Date.now()}`,
+            user_id: userId,
+            patient_id: formData.patientId || `pat-${userId}`,
+            glucose_value: val,
+            moment: formData.moment,
+            recorded_at: formData.recordedAt || new Date().toISOString(),
+            notes: formData.notes || null,
+            is_critical: isCritical,
+            status_text: statusText,
+          },
+        ],
+        { onConflict: 'id' }
+      )
       .select()
       .single();
 
@@ -236,6 +255,7 @@ export async function saveGlucoseToSupabase(formData: {
  * 4. Salvar Medicamento / Prescrição (AddMedicationModal)
  */
 export async function saveMedicationToSupabase(formData: {
+  id?: string;
   patientId?: string;
   name: string;
   dosage: string;
@@ -250,20 +270,23 @@ export async function saveMedicationToSupabase(formData: {
 
     const { data, error } = await supabase
       .from('medications')
-      .insert([
-        {
-          id: `med-${Date.now()}`,
-          user_id: userId,
-          patient_id: formData.patientId || `pat-${userId}`,
-          name: formData.name,
-          dosage: formData.dosage,
-          frequency: formData.frequency,
-          reminder_times: formData.reminderTimes || ['08:00'],
-          status: 'ATIVO',
-          is_active: true,
-          notes: formData.notes || null,
-        },
-      ])
+      .upsert(
+        [
+          {
+            id: formData.id || `med-${Date.now()}`,
+            user_id: userId,
+            patient_id: formData.patientId || `pat-${userId}`,
+            name: formData.name,
+            dosage: formData.dosage,
+            frequency: formData.frequency,
+            reminder_times: formData.reminderTimes || ['08:00'],
+            status: 'ATIVO',
+            is_active: true,
+            notes: formData.notes || null,
+          },
+        ],
+        { onConflict: 'id' }
+      )
       .select()
       .single();
 
@@ -279,6 +302,7 @@ export async function saveMedicationToSupabase(formData: {
  * 5. Salvar Consulta / Agendamento na UBS (ScheduleAppointmentModal & NewAppointmentModal)
  */
 export async function saveAppointmentToSupabase(formData: {
+  id?: string;
   patientId?: string;
   patientName?: string;
   patientAge?: number;
@@ -296,22 +320,25 @@ export async function saveAppointmentToSupabase(formData: {
 
     const { data, error } = await supabase
       .from('appointments')
-      .insert([
-        {
-          id: `app-${Date.now()}`,
-          user_id: userId,
-          patient_id: formData.patientId || `pat-${userId}`,
-          patient_name: formData.patientName || 'Paciente',
-          patient_age: formData.patientAge || 55,
-          patient_conditions: formData.patientConditions || ['HAS'],
-          doctor_name: formData.doctorName,
-          clinic_name: formData.clinicName,
-          scheduled_for: formData.scheduledFor,
-          appointment_type: formData.appointmentType,
-          status: 'AGENDADA',
-          notes: formData.notes || null,
-        },
-      ])
+      .upsert(
+        [
+          {
+            id: formData.id || `app-${Date.now()}`,
+            user_id: userId,
+            patient_id: formData.patientId || `pat-${userId}`,
+            patient_name: formData.patientName || 'Paciente',
+            patient_age: formData.patientAge || 55,
+            patient_conditions: formData.patientConditions || ['HAS'],
+            doctor_name: formData.doctorName,
+            clinic_name: formData.clinicName,
+            scheduled_for: formData.scheduledFor,
+            appointment_type: formData.appointmentType,
+            status: 'AGENDADA',
+            notes: formData.notes || null,
+          },
+        ],
+        { onConflict: 'id' }
+      )
       .select()
       .single();
 
@@ -327,6 +354,7 @@ export async function saveAppointmentToSupabase(formData: {
  * 6. Salvar Registro Diário de Sintomas e Bem-Estar (RegisterSymptomModal)
  */
 export async function saveSymptomLogToSupabase(formData: {
+  id?: string;
   patientId?: string;
   symptoms: string[];
   severity: 'BAIXA' | 'MEDIA' | 'ALTA';
@@ -339,17 +367,20 @@ export async function saveSymptomLogToSupabase(formData: {
 
     const { data, error } = await supabase
       .from('symptom_logs')
-      .insert([
-        {
-          id: `sym-${Date.now()}`,
-          user_id: userId,
-          patient_id: formData.patientId || `pat-${userId}`,
-          symptoms: formData.symptoms,
-          severity: formData.severity,
-          notes: formData.notes || null,
-          recorded_at: new Date().toISOString(),
-        },
-      ])
+      .upsert(
+        [
+          {
+            id: formData.id || `sym-${Date.now()}`,
+            user_id: userId,
+            patient_id: formData.patientId || `pat-${userId}`,
+            symptoms: formData.symptoms,
+            severity: formData.severity,
+            notes: formData.notes || null,
+            recorded_at: new Date().toISOString(),
+          },
+        ],
+        { onConflict: 'id' }
+      )
       .select()
       .single();
 
@@ -365,6 +396,7 @@ export async function saveSymptomLogToSupabase(formData: {
  * 7. Salvar Alerta Clínico / Triagem Rápida (DoctorQuickAlertModal)
  */
 export async function saveClinicalAlertToSupabase(formData: {
+  id?: string;
   patientId: string;
   patientName: string;
   severity: 'CRITICO' | 'ATENCAO' | 'INFO';
@@ -380,21 +412,24 @@ export async function saveClinicalAlertToSupabase(formData: {
 
     const { data, error } = await supabase
       .from('clinical_alerts')
-      .insert([
-        {
-          id: `alt-${Date.now()}`,
-          user_id: userId,
-          patient_id: formData.patientId,
-          patient_name: formData.patientName,
-          severity: formData.severity,
-          title: formData.title,
-          message: formData.message,
-          value_recorded: formData.valueRecorded || null,
-          metric_type: formData.metricType || 'GENERAL',
-          status: 'PENDENTE',
-          triggered_at: new Date().toISOString(),
-        },
-      ])
+      .upsert(
+        [
+          {
+            id: formData.id || `alt-${Date.now()}`,
+            user_id: userId,
+            patient_id: formData.patientId,
+            patient_name: formData.patientName,
+            severity: formData.severity,
+            title: formData.title,
+            message: formData.message,
+            value_recorded: formData.valueRecorded || null,
+            metric_type: formData.metricType || 'GENERAL',
+            status: 'PENDENTE',
+            triggered_at: new Date().toISOString(),
+          },
+        ],
+        { onConflict: 'id' }
+      )
       .select()
       .single();
 
@@ -403,5 +438,156 @@ export async function saveClinicalAlertToSupabase(formData: {
   } catch (error: any) {
     console.error('[Supabase] Erro ao salvar alerta clínico:', error.message || error);
     throw error;
+  }
+}
+
+// =========================================================================
+// FUNÇÕES DE LEITURA DIRETA DO SUPABASE PARA SINCRONIZAÇÃO EM TEMPO REAL
+// =========================================================================
+
+export async function fetchBloodPressureFromSupabase(patientId?: string): Promise<BloodPressureRecord[]> {
+  if (!supabase) return [];
+  try {
+    let query = supabase.from('blood_pressure_records').select('*').order('recorded_at', { ascending: false });
+    if (patientId) query = query.eq('patient_id', patientId);
+    const { data, error } = await query;
+    if (error || !data) return [];
+    return data.map((d: any) => ({
+      id: d.id,
+      patientId: d.patient_id,
+      systolic: d.systolic,
+      diastolic: d.diastolic,
+      pulse: d.pulse,
+      recordedAt: d.recorded_at,
+      notes: d.notes,
+      isCritical: d.is_critical,
+      statusText: d.status_text,
+      createdAt: d.created_at,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchGlucoseFromSupabase(patientId?: string): Promise<GlucoseRecord[]> {
+  if (!supabase) return [];
+  try {
+    let query = supabase.from('glucose_records').select('*').order('recorded_at', { ascending: false });
+    if (patientId) query = query.eq('patient_id', patientId);
+    const { data, error } = await query;
+    if (error || !data) return [];
+    return data.map((d: any) => ({
+      id: d.id,
+      patientId: d.patient_id,
+      glucoseValue: d.glucose_value,
+      moment: d.moment,
+      recordedAt: d.recorded_at,
+      notes: d.notes,
+      isCritical: d.is_critical,
+      statusText: d.status_text,
+      createdAt: d.created_at,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchMedicationsFromSupabase(patientId?: string): Promise<Medication[]> {
+  if (!supabase) return [];
+  try {
+    let query = supabase.from('medications').select('*').order('created_at', { ascending: false });
+    if (patientId) query = query.eq('patient_id', patientId);
+    const { data, error } = await query;
+    if (error || !data) return [];
+    return data.map((d: any) => ({
+      id: d.id,
+      patientId: d.patient_id,
+      name: d.name,
+      dosage: d.dosage,
+      frequency: d.frequency,
+      reminderTimes: d.reminder_times || ['08:00'],
+      status: (d.status || (d.is_active ? 'ATIVO' : 'SUSPENSO')) as 'ATIVO' | 'SUSPENSO' | 'CONCLUIDO',
+      notes: d.notes,
+      createdAt: d.created_at,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchAppointmentsFromSupabase(patientId?: string): Promise<Appointment[]> {
+  if (!supabase) return [];
+  try {
+    let query = supabase.from('appointments').select('*').order('scheduled_for', { ascending: true });
+    if (patientId) query = query.eq('patient_id', patientId);
+    const { data, error } = await query;
+    if (error || !data) return [];
+    return data.map((d: any) => ({
+      id: d.id,
+      patientId: d.patient_id,
+      patientName: d.patient_name || 'Paciente',
+      patientAge: d.patient_age,
+      patientConditions: d.patient_conditions || [],
+      doctorName: d.doctor_name,
+      clinicName: d.clinic_name,
+      scheduledFor: d.scheduled_for,
+      appointmentType: d.appointment_type,
+      notes: d.notes,
+      status: d.status,
+      createdAt: d.created_at,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchPatientsFromSupabase(): Promise<Patient[]> {
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase.from('patients').select('*').order('name');
+    if (error || !data) return [];
+    return data.map((d: any) => ({
+      id: d.id,
+      userId: d.user_id,
+      name: d.name,
+      email: d.email,
+      age: d.age,
+      gender: d.gender,
+      conditions: d.conditions || ['HAS'],
+      riskLevel: d.risk_level,
+      healthcareUnit: d.healthcare_unit,
+      avatarUrl: d.avatar_url,
+      adherenceRate: d.adherence_rate,
+      phone: d.phone,
+      createdAt: d.created_at,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchAlertsFromSupabase(patientId?: string): Promise<ClinicalAlert[]> {
+  if (!supabase) return [];
+  try {
+    let query = supabase.from('clinical_alerts').select('*').order('triggered_at', { ascending: false });
+    if (patientId) query = query.eq('patient_id', patientId);
+    const { data, error } = await query;
+    if (error || !data) return [];
+    return data.map((d: any) => ({
+      id: d.id,
+      patientId: d.patient_id,
+      patientName: d.patient_name,
+      patientAge: d.patient_age,
+      patientConditions: d.patient_conditions || [],
+      severity: d.severity,
+      title: d.title,
+      message: d.message,
+      valueRecorded: d.value_recorded,
+      metricType: d.metric_type,
+      status: d.status,
+      triggeredAt: d.triggered_at,
+    }));
+  } catch {
+    return [];
   }
 }

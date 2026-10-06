@@ -826,15 +826,22 @@ export async function getDatabase(): Promise<IDatabase> {
   if (databaseInstance) return databaseInstance;
 
   // 1. Try Supabase REST/SDK if configured
-  const supabaseUrl =
+  const rawSupabaseUrl =
     process.env.EXPO_PUBLIC_SUPABASE_URL ||
     process.env.SUPABASE_URL ||
-    process.env.VITE_SUPABASE_URL;
-  const supabaseServiceKey =
+    process.env.VITE_SUPABASE_URL ||
+    '';
+  const supabaseUrl = rawSupabaseUrl
+    .trim()
+    .replace(/\/rest\/v1\/?$/i, '')
+    .replace(/\/+$/, '');
+  const supabaseServiceKey = (
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
     process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
     process.env.SUPABASE_ANON_KEY ||
-    process.env.VITE_SUPABASE_ANON_KEY;
+    process.env.VITE_SUPABASE_ANON_KEY ||
+    ''
+  ).trim();
   if (supabaseUrl && supabaseServiceKey && !supabaseUrl.includes('xyzcompany.supabase.co')) {
     try {
       const supaDb = new SupabaseAdapter(supabaseUrl, supabaseServiceKey);

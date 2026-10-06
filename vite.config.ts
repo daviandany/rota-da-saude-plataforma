@@ -28,10 +28,13 @@ export default defineConfig(({ mode }) => {
         env.EXPO_PUBLIC_FIREBASE_APP_ID || process.env.EXPO_PUBLIC_FIREBASE_APP_ID || ''
       ),
       'process.env.EXPO_PUBLIC_SUPABASE_URL': JSON.stringify(
-        env.EXPO_PUBLIC_SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || env.VITE_SUPABASE_URL || ''
+        (env.EXPO_PUBLIC_SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || env.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL || '')
+          .trim()
+          .replace(/\/rest\/v1\/?$/i, '')
+          .replace(/\/+$/, '')
       ),
       'process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY': JSON.stringify(
-        env.EXPO_PUBLIC_SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY || ''
+        (env.EXPO_PUBLIC_SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '').trim()
       ),
     },
     resolve: {

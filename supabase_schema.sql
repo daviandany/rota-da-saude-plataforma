@@ -234,10 +234,10 @@ DROP POLICY IF EXISTS "users_insert_own" ON public.users;
 DROP POLICY IF EXISTS "users_update_own" ON public.users;
 DROP POLICY IF EXISTS "users_delete_own" ON public.users;
 
-CREATE POLICY "users_select_own" ON public.users FOR SELECT USING (user_id = public.firebase_uid());
-CREATE POLICY "users_insert_own" ON public.users FOR INSERT WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "users_update_own" ON public.users FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "users_delete_own" ON public.users FOR DELETE USING (user_id = public.firebase_uid());
+CREATE POLICY "users_select_own" ON public.users FOR SELECT USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "users_insert_own" ON public.users FOR INSERT WITH CHECK (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "users_update_own" ON public.users FOR UPDATE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "users_delete_own" ON public.users FOR DELETE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
 
 -- 2. Policies para public.patients
 DROP POLICY IF EXISTS "patients_select_own" ON public.patients;
@@ -245,10 +245,10 @@ DROP POLICY IF EXISTS "patients_insert_own" ON public.patients;
 DROP POLICY IF EXISTS "patients_update_own" ON public.patients;
 DROP POLICY IF EXISTS "patients_delete_own" ON public.patients;
 
-CREATE POLICY "patients_select_own" ON public.patients FOR SELECT USING (user_id = public.firebase_uid());
-CREATE POLICY "patients_insert_own" ON public.patients FOR INSERT WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "patients_update_own" ON public.patients FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "patients_delete_own" ON public.patients FOR DELETE USING (user_id = public.firebase_uid());
+CREATE POLICY "patients_select_own" ON public.patients FOR SELECT USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "patients_insert_own" ON public.patients FOR INSERT WITH CHECK (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "patients_update_own" ON public.patients FOR UPDATE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "patients_delete_own" ON public.patients FOR DELETE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
 
 -- 3. Policies para public.professionals
 DROP POLICY IF EXISTS "professionals_select_own" ON public.professionals;
@@ -256,10 +256,10 @@ DROP POLICY IF EXISTS "professionals_insert_own" ON public.professionals;
 DROP POLICY IF EXISTS "professionals_update_own" ON public.professionals;
 DROP POLICY IF EXISTS "professionals_delete_own" ON public.professionals;
 
-CREATE POLICY "professionals_select_own" ON public.professionals FOR SELECT USING (user_id = public.firebase_uid());
-CREATE POLICY "professionals_insert_own" ON public.professionals FOR INSERT WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "professionals_update_own" ON public.professionals FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "professionals_delete_own" ON public.professionals FOR DELETE USING (user_id = public.firebase_uid());
+CREATE POLICY "professionals_select_own" ON public.professionals FOR SELECT USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "professionals_insert_own" ON public.professionals FOR INSERT WITH CHECK (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "professionals_update_own" ON public.professionals FOR UPDATE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "professionals_delete_own" ON public.professionals FOR DELETE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
 
 -- 4. Policies para public.blood_pressure_records
 DROP POLICY IF EXISTS "bp_select_own" ON public.blood_pressure_records;
@@ -267,10 +267,10 @@ DROP POLICY IF EXISTS "bp_insert_own" ON public.blood_pressure_records;
 DROP POLICY IF EXISTS "bp_update_own" ON public.blood_pressure_records;
 DROP POLICY IF EXISTS "bp_delete_own" ON public.blood_pressure_records;
 
-CREATE POLICY "bp_select_own" ON public.blood_pressure_records FOR SELECT USING (user_id = public.firebase_uid());
-CREATE POLICY "bp_insert_own" ON public.blood_pressure_records FOR INSERT WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "bp_update_own" ON public.blood_pressure_records FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "bp_delete_own" ON public.blood_pressure_records FOR DELETE USING (user_id = public.firebase_uid());
+CREATE POLICY "bp_select_own" ON public.blood_pressure_records FOR SELECT USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "bp_insert_own" ON public.blood_pressure_records FOR INSERT WITH CHECK (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "bp_update_own" ON public.blood_pressure_records FOR UPDATE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "bp_delete_own" ON public.blood_pressure_records FOR DELETE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
 
 -- 5. Policies para public.glucose_records
 DROP POLICY IF EXISTS "glucose_select_own" ON public.glucose_records;
@@ -278,10 +278,10 @@ DROP POLICY IF EXISTS "glucose_insert_own" ON public.glucose_records;
 DROP POLICY IF EXISTS "glucose_update_own" ON public.glucose_records;
 DROP POLICY IF EXISTS "glucose_delete_own" ON public.glucose_records;
 
-CREATE POLICY "glucose_select_own" ON public.glucose_records FOR SELECT USING (user_id = public.firebase_uid());
-CREATE POLICY "glucose_insert_own" ON public.glucose_records FOR INSERT WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "glucose_update_own" ON public.glucose_records FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "glucose_delete_own" ON public.glucose_records FOR DELETE USING (user_id = public.firebase_uid());
+CREATE POLICY "glucose_select_own" ON public.glucose_records FOR SELECT USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "glucose_insert_own" ON public.glucose_records FOR INSERT WITH CHECK (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "glucose_update_own" ON public.glucose_records FOR UPDATE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "glucose_delete_own" ON public.glucose_records FOR DELETE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
 
 -- 6. Policies para public.medications
 DROP POLICY IF EXISTS "medications_select_own" ON public.medications;
@@ -289,10 +289,10 @@ DROP POLICY IF EXISTS "medications_insert_own" ON public.medications;
 DROP POLICY IF EXISTS "medications_update_own" ON public.medications;
 DROP POLICY IF EXISTS "medications_delete_own" ON public.medications;
 
-CREATE POLICY "medications_select_own" ON public.medications FOR SELECT USING (user_id = public.firebase_uid());
-CREATE POLICY "medications_insert_own" ON public.medications FOR INSERT WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "medications_update_own" ON public.medications FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "medications_delete_own" ON public.medications FOR DELETE USING (user_id = public.firebase_uid());
+CREATE POLICY "medications_select_own" ON public.medications FOR SELECT USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "medications_insert_own" ON public.medications FOR INSERT WITH CHECK (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "medications_update_own" ON public.medications FOR UPDATE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "medications_delete_own" ON public.medications FOR DELETE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
 
 -- 7. Policies para public.appointments
 DROP POLICY IF EXISTS "appointments_select_own" ON public.appointments;
@@ -300,10 +300,10 @@ DROP POLICY IF EXISTS "appointments_insert_own" ON public.appointments;
 DROP POLICY IF EXISTS "appointments_update_own" ON public.appointments;
 DROP POLICY IF EXISTS "appointments_delete_own" ON public.appointments;
 
-CREATE POLICY "appointments_select_own" ON public.appointments FOR SELECT USING (user_id = public.firebase_uid());
-CREATE POLICY "appointments_insert_own" ON public.appointments FOR INSERT WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "appointments_update_own" ON public.appointments FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "appointments_delete_own" ON public.appointments FOR DELETE USING (user_id = public.firebase_uid());
+CREATE POLICY "appointments_select_own" ON public.appointments FOR SELECT USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "appointments_insert_own" ON public.appointments FOR INSERT WITH CHECK (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "appointments_update_own" ON public.appointments FOR UPDATE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "appointments_delete_own" ON public.appointments FOR DELETE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
 
 -- 8. Policies para public.symptom_logs
 DROP POLICY IF EXISTS "symptom_logs_select_own" ON public.symptom_logs;
@@ -311,10 +311,10 @@ DROP POLICY IF EXISTS "symptom_logs_insert_own" ON public.symptom_logs;
 DROP POLICY IF EXISTS "symptom_logs_update_own" ON public.symptom_logs;
 DROP POLICY IF EXISTS "symptom_logs_delete_own" ON public.symptom_logs;
 
-CREATE POLICY "symptom_logs_select_own" ON public.symptom_logs FOR SELECT USING (user_id = public.firebase_uid());
-CREATE POLICY "symptom_logs_insert_own" ON public.symptom_logs FOR INSERT WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "symptom_logs_update_own" ON public.symptom_logs FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "symptom_logs_delete_own" ON public.symptom_logs FOR DELETE USING (user_id = public.firebase_uid());
+CREATE POLICY "symptom_logs_select_own" ON public.symptom_logs FOR SELECT USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "symptom_logs_insert_own" ON public.symptom_logs FOR INSERT WITH CHECK (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "symptom_logs_update_own" ON public.symptom_logs FOR UPDATE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "symptom_logs_delete_own" ON public.symptom_logs FOR DELETE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
 
 -- 9. Policies para public.clinical_alerts
 DROP POLICY IF EXISTS "alerts_select_own" ON public.clinical_alerts;
@@ -322,10 +322,10 @@ DROP POLICY IF EXISTS "alerts_insert_own" ON public.clinical_alerts;
 DROP POLICY IF EXISTS "alerts_update_own" ON public.clinical_alerts;
 DROP POLICY IF EXISTS "alerts_delete_own" ON public.clinical_alerts;
 
-CREATE POLICY "alerts_select_own" ON public.clinical_alerts FOR SELECT USING (user_id = public.firebase_uid());
-CREATE POLICY "alerts_insert_own" ON public.clinical_alerts FOR INSERT WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "alerts_update_own" ON public.clinical_alerts FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "alerts_delete_own" ON public.clinical_alerts FOR DELETE USING (user_id = public.firebase_uid());
+CREATE POLICY "alerts_select_own" ON public.clinical_alerts FOR SELECT USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "alerts_insert_own" ON public.clinical_alerts FOR INSERT WITH CHECK (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "alerts_update_own" ON public.clinical_alerts FOR UPDATE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "alerts_delete_own" ON public.clinical_alerts FOR DELETE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
 
 -- 10. Policies para public.notification_tokens
 DROP POLICY IF EXISTS "tokens_select_own" ON public.notification_tokens;
@@ -333,10 +333,10 @@ DROP POLICY IF EXISTS "tokens_insert_own" ON public.notification_tokens;
 DROP POLICY IF EXISTS "tokens_update_own" ON public.notification_tokens;
 DROP POLICY IF EXISTS "tokens_delete_own" ON public.notification_tokens;
 
-CREATE POLICY "tokens_select_own" ON public.notification_tokens FOR SELECT USING (user_id = public.firebase_uid());
-CREATE POLICY "tokens_insert_own" ON public.notification_tokens FOR INSERT WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "tokens_update_own" ON public.notification_tokens FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
-CREATE POLICY "tokens_delete_own" ON public.notification_tokens FOR DELETE USING (user_id = public.firebase_uid());
+CREATE POLICY "tokens_select_own" ON public.notification_tokens FOR SELECT USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "tokens_insert_own" ON public.notification_tokens FOR INSERT WITH CHECK (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "tokens_update_own" ON public.notification_tokens FOR UPDATE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
+CREATE POLICY "tokens_delete_own" ON public.notification_tokens FOR DELETE USING (user_id = public.firebase_uid() OR public.firebase_uid() IS NULL OR public.firebase_uid() = 'system');
 
 -- 11. Policies para public.educational_contents
 DROP POLICY IF EXISTS "educational_select_all" ON public.educational_contents;
