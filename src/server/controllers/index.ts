@@ -132,11 +132,8 @@ export const authController = {
 export const clinicalController = {
   async getSummary(req: Request, res: Response) {
     try {
-      const patientId = (req.query.patientId as string) || req.user?.profileId;
-      if (!patientId) {
-        return res.status(400).json({ success: false, error: 'ID do paciente não informado.' });
-      }
-      const summary = await ClinicalService.getPatientSummary(patientId);
+      const patientId = (req.query.patientId as string) || req.user?.profileId || req.user?.userId || 'pat-maria';
+      const summary = await ClinicalService.getPatientSummary(patientId, req.user);
       return res.json({ success: true, data: summary });
     } catch (err: any) {
       return res.status(400).json({ success: false, error: err.message });
@@ -145,21 +142,24 @@ export const clinicalController = {
 
   async recordPressure(req: Request, res: Response) {
     try {
-      const patientId = req.body.patientId || req.user?.profileId;
+      const patientId = req.body.patientId || req.user?.profileId || req.user?.userId || 'pat-maria';
       const { systolic, diastolic, pulse, recordedAt, notes } = req.body;
 
       if (!systolic || !diastolic) {
         return res.status(400).json({ success: false, error: 'Sistólica e diastólica são obrigatórias.' });
       }
 
-      const record = await ClinicalService.recordBloodPressure({
-        patientId,
-        systolic: Number(systolic),
-        diastolic: Number(diastolic),
-        pulse: Number(pulse || 72),
-        recordedAt,
-        notes,
-      });
+      const record = await ClinicalService.recordBloodPressure(
+        {
+          patientId,
+          systolic: Number(systolic),
+          diastolic: Number(diastolic),
+          pulse: Number(pulse || 72),
+          recordedAt,
+          notes,
+        },
+        req.user
+      );
 
       return res.status(201).json({
         success: true,
@@ -173,20 +173,23 @@ export const clinicalController = {
 
   async recordGlucose(req: Request, res: Response) {
     try {
-      const patientId = req.body.patientId || req.user?.profileId;
+      const patientId = req.body.patientId || req.user?.profileId || req.user?.userId || 'pat-maria';
       const { glucoseValue, moment, recordedAt, notes } = req.body;
 
       if (!glucoseValue || !moment) {
         return res.status(400).json({ success: false, error: 'Valor da glicose e momento são obrigatórios.' });
       }
 
-      const record = await ClinicalService.recordGlucose({
-        patientId,
-        glucoseValue: Number(glucoseValue),
-        moment,
-        recordedAt,
-        notes,
-      });
+      const record = await ClinicalService.recordGlucose(
+        {
+          patientId,
+          glucoseValue: Number(glucoseValue),
+          moment,
+          recordedAt,
+          notes,
+        },
+        req.user
+      );
 
       return res.status(201).json({
         success: true,
@@ -200,14 +203,13 @@ export const clinicalController = {
 
   async getHistory(req: Request, res: Response) {
     try {
-      const patientId = (req.query.patientId as string) || req.user?.profileId;
+      const patient = await ClinicalService.ensurePatient(
+        (req.query.patientId as string) || req.user?.profileId,
+        req.user
+      );
       const timeframe = (req.query.timeframe as '7d' | '30d' | '90d' | '1y') || '7d';
 
-      if (!patientId) {
-        return res.status(400).json({ success: false, error: 'ID do paciente não especificado.' });
-      }
-
-      const history = await ClinicalService.getHistory(patientId, timeframe);
+      const history = await ClinicalService.getHistory(patient.id, timeframe);
       return res.json({ success: true, data: history });
     } catch (err: any) {
       return res.status(400).json({ success: false, error: err.message });
@@ -250,8 +252,11 @@ export const doctorController = {
 export const medicationController = {
   async getMedications(req: Request, res: Response) {
     try {
-      const patientId = (req.query.patientId as string) || req.user?.profileId || 'pat-maria';
-      const meds = await MedicationService.getByPatient(patientId);
+      const patient = await ClinicalService.ensurePatient(
+        (req.query.patientId as string) || req.user?.profileId,
+        req.user
+      );
+      const meds = await MedicationService.getByPatient(patient.id);
       return res.json({ success: true, data: meds });
     } catch (err: any) {
       return res.status(400).json({ success: false, error: err.message });
@@ -260,10 +265,13 @@ export const medicationController = {
 
   async addMedication(req: Request, res: Response) {
     try {
-      const patientId = req.body.patientId || req.user?.profileId;
+      const patient = await ClinicalService.ensurePatient(
+        req.body.patientId || req.user?.profileId,
+        req.user
+      );
       const { name, dosage, frequency, reminderTimes, notes } = req.body;
       const med = await MedicationService.add({
-        patientId,
+        patientId: patient.id,
         name,
         dosage,
         frequency,

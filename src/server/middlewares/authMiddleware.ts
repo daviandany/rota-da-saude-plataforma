@@ -36,6 +36,51 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
   // 1. Tenta validar como JWT assinado pelo backend
   try {
     const decoded = jwt.verify(token, config.jwtSecret) as AuthenticatedUserPayload;
+    const db = await getDatabase();
+
+    // Garante que o usuário e o paciente existam no banco atual (ex: após cold start Serverless)
+    let user = await db.getUserById(decoded.userId);
+    if (!user && decoded.email) {
+      user = await db.getUserByEmail(decoded.email);
+    }
+
+    if (!user) {
+      user = await db.createUser({
+        id: decoded.userId || 'u-' + Date.now(),
+        email: decoded.email || 'paciente@rotadasaude.gov.br',
+        passwordHash: 'jwt-session',
+        name: decoded.name || 'Paciente',
+        role: decoded.role || 'PATIENT',
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    if (decoded.role === 'PATIENT') {
+      const targetProfileId = decoded.profileId || 'pat-' + user.id;
+      let patient = await db.getPatientById(targetProfileId);
+      if (!patient) {
+        patient = await db.getPatientByUserId(user.id);
+      }
+      if (!patient) {
+        patient = await db.createPatient({
+          id: targetProfileId,
+          userId: user.id,
+          name: decoded.name || user.name || 'Paciente',
+          email: decoded.email || user.email,
+          age: 55,
+          gender: 'Não especificado',
+          conditions: ['Hipertensão Arterial (HAS)', 'Diabetes Mellitus Tipo 2'],
+          riskLevel: 'MODERADO',
+          healthcareUnit: 'UBS Dr. Manoel de Abreu',
+          adherenceRate: 94,
+          phone: '(11) 98765-4321',
+          createdAt: new Date().toISOString(),
+        });
+      }
+      decoded.profileId = patient.id;
+      decoded.userId = user.id;
+    }
+
     req.user = decoded;
     return next();
   } catch {
@@ -47,52 +92,89 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     let email = '';
     let name = '';
     let uid = '';
+    let picture = '';
 
     const fbDecoded = await verifyFirebaseIdToken(token);
     if (fbDecoded) {
       uid = fbDecoded.uid;
       email = fbDecoded.email || '';
       name = fbDecoded.name || email.split('@')[0] || 'Usuário Firebase';
+      picture = fbDecoded.picture || '';
     } else {
       const unverified = jwt.decode(token) as any;
       if (unverified && (unverified.user_id || unverified.sub) && unverified.email) {
         uid = unverified.user_id || unverified.sub;
         email = unverified.email;
         name = unverified.name || email.split('@')[0] || 'Usuário Firebase';
+        picture = unverified.picture || '';
       }
     }
 
     if (email) {
       const db = await getDatabase();
-      const user = await db.getUserByEmail(email);
-      if (user) {
-        let profileId = '';
-        if (user.role === 'PATIENT') {
-          const patient = await db.getPatientByUserId(user.id);
-          profileId = patient?.id || '';
-        } else {
-          const prof = await db.getProfessionalByUserId(user.id);
-          profileId = prof?.id || '';
-        }
+      let user = await db.getUserByEmail(email);
 
-        req.user = {
-          userId: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          profileId,
-        };
-        return next();
-      } else if (uid) {
-        req.user = {
-          userId: 'u-google-' + uid.slice(0, 16),
+      if (!user) {
+        const userId = 'u-google-' + (uid ? uid.slice(0, 16) : Date.now());
+        user = await db.createUser({
+          id: userId,
           email,
+          passwordHash: 'firebase-oauth',
           name,
           role: 'PATIENT',
-          profileId: 'pat-maria',
-        };
-        return next();
+          createdAt: new Date().toISOString(),
+        });
       }
+
+      let profileId = '';
+      if (user.role === 'PATIENT') {
+        let patient = await db.getPatientByUserId(user.id);
+        if (!patient) {
+          profileId = 'pat-' + user.id.replace(/^u-/, '');
+          patient = await db.createPatient({
+            id: profileId,
+            userId: user.id,
+            name: user.name || name,
+            email: user.email,
+            age: 55,
+            gender: 'Não especificado',
+            conditions: ['Hipertensão Arterial (HAS)', 'Diabetes Mellitus Tipo 2'],
+            riskLevel: 'MODERADO',
+            healthcareUnit: 'UBS Dr. Manoel de Abreu',
+            avatarUrl: picture || undefined,
+            adherenceRate: 94,
+            phone: '(11) 98765-4321',
+            createdAt: new Date().toISOString(),
+          });
+        }
+        profileId = patient.id;
+      } else {
+        let prof = await db.getProfessionalByUserId(user.id);
+        if (!prof) {
+          profileId = 'prof-' + user.id.replace(/^u-/, '');
+          prof = await db.createProfessional({
+            id: profileId,
+            userId: user.id,
+            name: user.name || name,
+            email: user.email,
+            crm: 'CRM 12345/SP',
+            specialty: 'Medicina de Família e Comunidade',
+            healthcareUnit: 'UBS Dr. Manoel de Abreu',
+            avatarUrl: picture || undefined,
+            createdAt: new Date().toISOString(),
+          });
+        }
+        profileId = prof.id;
+      }
+
+      req.user = {
+        userId: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        profileId,
+      };
+      return next();
     }
   } catch {
     // Segue para retorno 401

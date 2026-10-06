@@ -27,6 +27,12 @@ export default defineConfig(({ mode }) => {
       'process.env.EXPO_PUBLIC_FIREBASE_APP_ID': JSON.stringify(
         env.EXPO_PUBLIC_FIREBASE_APP_ID || process.env.EXPO_PUBLIC_FIREBASE_APP_ID || ''
       ),
+      'process.env.EXPO_PUBLIC_SUPABASE_URL': JSON.stringify(
+        env.EXPO_PUBLIC_SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || env.VITE_SUPABASE_URL || ''
+      ),
+      'process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY': JSON.stringify(
+        env.EXPO_PUBLIC_SUPABASE_ANON_KEY || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY || ''
+      ),
     },
     resolve: {
       alias: {

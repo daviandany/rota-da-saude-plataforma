@@ -46,6 +46,9 @@ const MainApp: React.FC = () => {
   const [isNewAppointmentOpen, setIsNewAppointmentOpen] = useState(false);
   const [isNewPatientOpen, setIsNewPatientOpen] = useState(false);
   const [isQuickAlertOpen, setIsQuickAlertOpen] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  const triggerRefresh = () => setRefreshTrigger((prev) => prev + 1);
 
   // Check if newly logged-in user needs onboarding / profile completion
   React.useEffect(() => {
@@ -91,6 +94,7 @@ const MainApp: React.FC = () => {
       >
         {user.role === 'PATIENT' ? (
           <WebPatientDashboard
+            key={refreshTrigger}
             onOpenPressureModal={() => setIsPressureModalOpen(true)}
             onOpenGlucoseModal={() => setIsGlucoseModalOpen(true)}
             onOpenAddMedication={() => setIsAddMedModalOpen(true)}
@@ -101,6 +105,7 @@ const MainApp: React.FC = () => {
           />
         ) : (
           <WebDoctorDashboard
+            key={refreshTrigger}
             onOpenNewAppointment={() => setIsNewAppointmentOpen(true)}
             onOpenAddMedication={(pId) => {
               setSelectedPatientId(pId || null);
@@ -133,16 +138,19 @@ const MainApp: React.FC = () => {
       <RegisterPressureModal
         isOpen={isPressureModalOpen}
         onClose={() => setIsPressureModalOpen(false)}
-        onSuccess={() => {}}
+        onSuccess={triggerRefresh}
+        patientId={user.profileId || undefined}
       />
       <RegisterGlucoseModal
         isOpen={isGlucoseModalOpen}
         onClose={() => setIsGlucoseModalOpen(false)}
-        onSuccess={() => {}}
+        onSuccess={triggerRefresh}
+        patientId={user.profileId || undefined}
       />
       <RegisterSymptomModal
         isOpen={isSymptomModalOpen}
         onClose={() => setIsSymptomModalOpen(false)}
+        onSuccess={triggerRefresh}
       />
       <EmergencyModal
         isOpen={isEmergencyModalOpen}
@@ -151,31 +159,31 @@ const MainApp: React.FC = () => {
       <ScheduleAppointmentModal
         isOpen={isScheduleAppointmentOpen}
         onClose={() => setIsScheduleAppointmentOpen(false)}
-        onSuccess={() => {}}
+        onSuccess={triggerRefresh}
       />
       <AddMedicationModal
         isOpen={isAddMedModalOpen}
         onClose={() => setIsAddMedModalOpen(false)}
-        onSuccess={() => {}}
-        patientId={selectedPatientId || undefined}
+        onSuccess={triggerRefresh}
+        patientId={selectedPatientId || user.profileId || undefined}
       />
 
       {/* Modais Clínicos do Profissional / Médico */}
       <NewAppointmentModal
         isOpen={isNewAppointmentOpen}
         onClose={() => setIsNewAppointmentOpen(false)}
-        onSuccess={() => {}}
+        onSuccess={triggerRefresh}
         patientId={selectedPatientId || undefined}
       />
       <NewPatientModal
         isOpen={isNewPatientOpen}
         onClose={() => setIsNewPatientOpen(false)}
-        onSuccess={() => {}}
+        onSuccess={triggerRefresh}
       />
       <DoctorQuickAlertModal
         isOpen={isQuickAlertOpen}
         onClose={() => setIsQuickAlertOpen(false)}
-        onSuccess={() => {}}
+        onSuccess={triggerRefresh}
       />
     </>
   );

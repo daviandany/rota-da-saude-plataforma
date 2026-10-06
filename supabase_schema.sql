@@ -1,97 +1,126 @@
 -- =========================================================================
 -- ROTA DA SAÚDE: HIPERTENSÃO & DIABETES
--- DDL & MIGRATION SCRIPT PARA SUPABASE (POSTGRESQL + ROW LEVEL SECURITY)
+-- SCRIPT SQL COMPLETO PARA SUPABASE (POSTGRESQL + FIREBASE AUTH UID + RLS)
 -- =========================================================================
 
--- 1. Habilitar extensões necessárias
+-- 1. EXTENSÕES NECESSÁRIAS
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- 2. Tabela de Usuários (Integrada ou espelhada de auth.users do Supabase)
+-- 2. FUNÇÃO HELPER DE IDENTIDADE FIREBASE AUTH (UID ALFANUMÉRICO COMO TEXT)
+-- Extrai o UID do Firebase a partir do JWT (sub / user_id) ou do cabeçalho x-firebase-uid
+CREATE OR REPLACE FUNCTION public.firebase_uid()
+RETURNS TEXT
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT COALESCE(
+    NULLIF(current_setting('request.jwt.claim.sub', true), ''),
+    NULLIF((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub'), ''),
+    NULLIF((NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'user_id'), ''),
+    NULLIF((NULLIF(current_setting('request.headers', true), '')::jsonb ->> 'x-firebase-uid'), '')
+  );
+$$;
+
+-- =========================================================================
+-- TABELAS DO SISTEMA (TODAS COM user_id TEXT PARA O UID DO FIREBASE AUTH)
+-- =========================================================================
+
+-- 1. Tabela de Usuários (Autenticação e Perfil Base)
 CREATE TABLE IF NOT EXISTS public.users (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    user_id TEXT NOT NULL DEFAULT COALESCE(public.firebase_uid(), 'system'),
     email TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
+    password_hash TEXT NOT NULL DEFAULT 'firebase-auth',
     name TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('PATIENT', 'PROFESSIONAL', 'ADMIN')),
+    role TEXT NOT NULL CHECK (role IN ('PATIENT', 'PROFESSIONAL', 'ADMIN')) DEFAULT 'PATIENT',
     created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 3. Tabela de Profissionais de Saúde
+-- 2. Tabela de Pacientes (Cadastro Clínico Hiperdia - UserProfileModal / NewPatientModal)
+CREATE TABLE IF NOT EXISTS public.patients (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    user_id TEXT NOT NULL DEFAULT COALESCE(public.firebase_uid(), 'system'),
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    age INTEGER NOT NULL DEFAULT 50,
+    gender TEXT NOT NULL DEFAULT 'Não informado',
+    conditions TEXT[] NOT NULL DEFAULT ARRAY['HAS']::TEXT[],
+    risk_level TEXT NOT NULL CHECK (risk_level IN ('BAIXO', 'MODERADO', 'ALTO')) DEFAULT 'MODERADO',
+    healthcare_unit TEXT NOT NULL DEFAULT 'UBS de Referência',
+    avatar_url TEXT,
+    adherence_rate INTEGER DEFAULT 90,
+    phone TEXT,
+    created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- 3. Tabela de Profissionais de Saúde (Médicos / Enfermeiros - UserProfileModal)
 CREATE TABLE IF NOT EXISTS public.professionals (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    user_id TEXT REFERENCES public.users(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL DEFAULT COALESCE(public.firebase_uid(), 'system'),
     name TEXT NOT NULL,
     email TEXT NOT NULL,
     crm TEXT NOT NULL,
-    specialty TEXT NOT NULL,
-    healthcare_unit TEXT NOT NULL,
+    specialty TEXT NOT NULL DEFAULT 'Medicina de Família e Comunidade',
+    healthcare_unit TEXT NOT NULL DEFAULT 'UBS de Referência',
     phone TEXT,
     avatar_url TEXT,
     created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 4. Tabela de Pacientes (Hipertensos e Diabéticos)
-CREATE TABLE IF NOT EXISTS public.patients (
-    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    user_id TEXT REFERENCES public.users(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL,
-    age INTEGER NOT NULL,
-    gender TEXT NOT NULL,
-    conditions TEXT[] NOT NULL DEFAULT ARRAY['HAS']::TEXT[],
-    risk_level TEXT NOT NULL CHECK (risk_level IN ('BAIXO', 'MODERADO', 'ALTO')),
-    healthcare_unit TEXT NOT NULL,
-    avatar_url TEXT,
-    adherence_rate INTEGER DEFAULT 80,
-    phone TEXT,
-    created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
-);
-
--- 5. Tabela de Aferições de Pressão Arterial
+-- 4. Tabela de Aferições de Pressão Arterial (RegisterPressureModal)
 CREATE TABLE IF NOT EXISTS public.blood_pressure_records (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    patient_id TEXT REFERENCES public.patients(id) ON DELETE CASCADE NOT NULL,
+    user_id TEXT NOT NULL DEFAULT COALESCE(public.firebase_uid(), 'system'),
+    patient_id TEXT NOT NULL,
     systolic INTEGER NOT NULL,
     diastolic INTEGER NOT NULL,
-    pulse INTEGER NOT NULL,
-    recorded_at TIMESTAMPTZ NOT NULL,
+    pulse INTEGER NOT NULL DEFAULT 72,
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT TIMEZONE('utc'::text, NOW()),
     notes TEXT,
     is_critical BOOLEAN DEFAULT FALSE,
-    status_text TEXT NOT NULL,
+    status_text TEXT NOT NULL DEFAULT 'Normal',
     created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 6. Tabela de Aferições de Glicemia
+-- 5. Tabela de Aferições de Glicemia Capilar (RegisterGlucoseModal)
 CREATE TABLE IF NOT EXISTS public.glucose_records (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    patient_id TEXT REFERENCES public.patients(id) ON DELETE CASCADE NOT NULL,
+    user_id TEXT NOT NULL DEFAULT COALESCE(public.firebase_uid(), 'system'),
+    patient_id TEXT NOT NULL,
     glucose_value INTEGER NOT NULL,
     moment TEXT NOT NULL CHECK (moment IN ('EM_JEJUM', 'ANTES_ALMOCO', 'APOS_ALMOCO', 'ANTES_JANTAR', 'APOS_JANTAR', 'AO_DORMIR')),
-    recorded_at TIMESTAMPTZ NOT NULL,
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT TIMEZONE('utc'::text, NOW()),
     notes TEXT,
     is_critical BOOLEAN DEFAULT FALSE,
-    status_text TEXT NOT NULL,
+    status_text TEXT NOT NULL DEFAULT 'Normal',
     created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 7. Tabela de Medicamentos e Prescrições
+-- 6. Tabela de Medicamentos e Prescrições (AddMedicationModal & PatientMedications)
 CREATE TABLE IF NOT EXISTS public.medications (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    patient_id TEXT REFERENCES public.patients(id) ON DELETE CASCADE NOT NULL,
+    user_id TEXT NOT NULL DEFAULT COALESCE(public.firebase_uid(), 'system'),
+    patient_id TEXT NOT NULL,
     name TEXT NOT NULL,
     dosage TEXT NOT NULL,
     frequency TEXT NOT NULL,
     reminder_times TEXT[] NOT NULL DEFAULT ARRAY['08:00']::TEXT[],
-    notes TEXT,
+    status TEXT NOT NULL CHECK (status IN ('ATIVO', 'SUSPENSO', 'CONCLUIDO')) DEFAULT 'ATIVO',
     is_active BOOLEAN DEFAULT TRUE,
+    notes TEXT,
     created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 8. Tabela de Consultas Médicas e Retornos
+-- 7. Tabela de Consultas e Agendamentos na UBS (ScheduleAppointmentModal & NewAppointmentModal)
 CREATE TABLE IF NOT EXISTS public.appointments (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    patient_id TEXT REFERENCES public.patients(id) ON DELETE CASCADE NOT NULL,
+    user_id TEXT NOT NULL DEFAULT COALESCE(public.firebase_uid(), 'system'),
+    patient_id TEXT NOT NULL,
+    professional_id TEXT,
+    patient_name TEXT NOT NULL DEFAULT 'Paciente',
+    patient_age INTEGER,
+    patient_conditions TEXT[] DEFAULT ARRAY[]::TEXT[],
     doctor_name TEXT NOT NULL,
     clinic_name TEXT NOT NULL,
     scheduled_for TIMESTAMPTZ NOT NULL,
@@ -101,24 +130,50 @@ CREATE TABLE IF NOT EXISTS public.appointments (
     created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 9. Tabela de Alertas Clínicos (Triagem e Risco)
+-- 8. Tabela de Registro Diário de Sintomas e Bem-Estar (RegisterSymptomModal)
+CREATE TABLE IF NOT EXISTS public.symptom_logs (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    user_id TEXT NOT NULL DEFAULT COALESCE(public.firebase_uid(), 'system'),
+    patient_id TEXT NOT NULL,
+    symptoms TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+    severity TEXT NOT NULL CHECK (severity IN ('BAIXA', 'MEDIA', 'ALTA')) DEFAULT 'BAIXA',
+    notes TEXT,
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT TIMEZONE('utc'::text, NOW()),
+    created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- 9. Tabela de Alertas Clínicos e Triagem de Risco (DoctorQuickAlertModal & Alertas Automáticos)
 CREATE TABLE IF NOT EXISTS public.clinical_alerts (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-    patient_id TEXT REFERENCES public.patients(id) ON DELETE CASCADE NOT NULL,
+    user_id TEXT NOT NULL DEFAULT COALESCE(public.firebase_uid(), 'system'),
+    patient_id TEXT NOT NULL,
     patient_name TEXT NOT NULL,
+    patient_age INTEGER,
+    patient_conditions TEXT[] DEFAULT ARRAY[]::TEXT[],
     severity TEXT NOT NULL CHECK (severity IN ('CRITICO', 'ATENCAO', 'INFO')),
     title TEXT NOT NULL,
     message TEXT NOT NULL,
     value_recorded TEXT,
-    metric_type TEXT NOT NULL CHECK (metric_type IN ('PRESSURE', 'GLUCOSE', 'GENERAL')),
+    metric_type TEXT NOT NULL CHECK (metric_type IN ('PRESSURE', 'GLUCOSE', 'GENERAL')) DEFAULT 'GENERAL',
     status TEXT NOT NULL CHECK (status IN ('PENDENTE', 'RESOLVIDO')) DEFAULT 'PENDENTE',
-    triggered_at TIMESTAMPTZ NOT NULL,
+    triggered_at TIMESTAMPTZ NOT NULL DEFAULT TIMEZONE('utc'::text, NOW()),
     created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 10. Tabela de Conteúdos Educativos (Mitos e Verdades)
+-- 10. Tabela de Tokens FCM e Notificações Push (NotificationCenterModal)
+CREATE TABLE IF NOT EXISTS public.notification_tokens (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    user_id TEXT NOT NULL DEFAULT COALESCE(public.firebase_uid(), 'system'),
+    token TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('PATIENT', 'PROFESSIONAL')) DEFAULT 'PATIENT',
+    platform TEXT NOT NULL DEFAULT 'web',
+    created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- 11. Tabela de Conteúdos Educativos (Mitos e Verdades)
 CREATE TABLE IF NOT EXISTS public.educational_contents (
     id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT 'system',
     title TEXT NOT NULL,
     statement TEXT NOT NULL,
     type TEXT NOT NULL CHECK (type IN ('MITO', 'VERDADE')),
@@ -128,16 +183,34 @@ CREATE TABLE IF NOT EXISTS public.educational_contents (
 );
 
 -- =========================================================================
--- ÍNDICES DE PERFORMANCE PARA SÉRIES TEMPORAIS E BUSCAS
+-- GARANTIA DE COLUNA user_id TEXT EM TABELAS PREEXISTENTES
 -- =========================================================================
-CREATE INDEX IF NOT EXISTS idx_bp_patient_date ON public.blood_pressure_records(patient_id, recorded_at DESC);
-CREATE INDEX IF NOT EXISTS idx_glucose_patient_date ON public.glucose_records(patient_id, recorded_at DESC);
-CREATE INDEX IF NOT EXISTS idx_alerts_patient_status ON public.clinical_alerts(patient_id, status);
-CREATE INDEX IF NOT EXISTS idx_appointments_patient_date ON public.appointments(patient_id, scheduled_for ASC);
-CREATE INDEX IF NOT EXISTS idx_patients_risk ON public.patients(risk_level);
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS user_id TEXT DEFAULT 'system';
+ALTER TABLE public.patients ADD COLUMN IF NOT EXISTS user_id TEXT DEFAULT 'system';
+ALTER TABLE public.professionals ADD COLUMN IF NOT EXISTS user_id TEXT DEFAULT 'system';
+ALTER TABLE public.blood_pressure_records ADD COLUMN IF NOT EXISTS user_id TEXT DEFAULT 'system';
+ALTER TABLE public.glucose_records ADD COLUMN IF NOT EXISTS user_id TEXT DEFAULT 'system';
+ALTER TABLE public.medications ADD COLUMN IF NOT EXISTS user_id TEXT DEFAULT 'system';
+ALTER TABLE public.appointments ADD COLUMN IF NOT EXISTS user_id TEXT DEFAULT 'system';
+ALTER TABLE public.clinical_alerts ADD COLUMN IF NOT EXISTS user_id TEXT DEFAULT 'system';
 
 -- =========================================================================
--- HABILITAR ROW LEVEL SECURITY (RLS) NO SUPABASE
+-- ÍNDICES DE PERFORMANCE (POR user_id E patient_id)
+-- =========================================================================
+CREATE INDEX IF NOT EXISTS idx_users_user_id ON public.users(user_id);
+CREATE INDEX IF NOT EXISTS idx_patients_user_id ON public.patients(user_id);
+CREATE INDEX IF NOT EXISTS idx_professionals_user_id ON public.professionals(user_id);
+CREATE INDEX IF NOT EXISTS idx_bp_user_id ON public.blood_pressure_records(user_id, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_bp_patient_date ON public.blood_pressure_records(patient_id, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_glucose_user_id ON public.glucose_records(user_id, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_glucose_patient_date ON public.glucose_records(patient_id, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_medications_user_id ON public.medications(user_id);
+CREATE INDEX IF NOT EXISTS idx_appointments_user_id ON public.appointments(user_id, scheduled_for ASC);
+CREATE INDEX IF NOT EXISTS idx_symptom_logs_user_id ON public.symptom_logs(user_id, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alerts_user_id ON public.clinical_alerts(user_id, status);
+
+-- =========================================================================
+-- HABILITAR ROW LEVEL SECURITY (RLS) EM TODAS AS TABELAS
 -- =========================================================================
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.patients ENABLE ROW LEVEL SECURITY;
@@ -146,42 +219,125 @@ ALTER TABLE public.blood_pressure_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.glucose_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.medications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.appointments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.symptom_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.clinical_alerts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notification_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.educational_contents ENABLE ROW LEVEL SECURITY;
 
--- Políticas de RLS de Leitura e Escrita
-CREATE POLICY "Public Read Educational" ON public.educational_contents FOR SELECT USING (true);
-CREATE POLICY "Allow All Users Read Own Data" ON public.users FOR SELECT USING (true);
-CREATE POLICY "Allow Patients and Pros Read Patient Data" ON public.patients FOR ALL USING (true);
-CREATE POLICY "Allow Manage BP Records" ON public.blood_pressure_records FOR ALL USING (true);
-CREATE POLICY "Allow Manage Glucose Records" ON public.glucose_records FOR ALL USING (true);
-CREATE POLICY "Allow Manage Medications" ON public.medications FOR ALL USING (true);
-CREATE POLICY "Allow Manage Appointments" ON public.appointments FOR ALL USING (true);
-CREATE POLICY "Allow Manage Alerts" ON public.clinical_alerts FOR ALL USING (true);
-
 -- =========================================================================
--- DADOS INICIAIS (SEED DATA) PARA SUPABASE
+-- POLÍTICAS DE SEGURANÇA (RLS POLICIES) BASEADAS EM user_id = firebase_uid()
 -- =========================================================================
-INSERT INTO public.users (id, email, password_hash, name, role) VALUES
-('u-patient-maria', 'maria.silva@email.com', '$2b$10$w3U/m9q6jW9Y9sQ8kH4WdO5vW4uM4X0i6Y8sQ8kH4WdO5vW4uM4X0', 'Maria Silva', 'PATIENT'),
-('u-doc-carlos', 'carlos.mendes@saude.gov.br', '$2b$10$w3U/m9q6jW9Y9sQ8kH4WdO5vW4uM4X0i6Y8sQ8kH4WdO5vW4uM4X0', 'Dr. Carlos Mendes', 'PROFESSIONAL')
-ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO public.professionals (id, user_id, name, email, crm, specialty, healthcare_unit, phone, avatar_url) VALUES
-('pro-carlos', 'u-doc-carlos', 'Dr. Carlos Mendes', 'carlos.mendes@saude.gov.br', 'CRM/SP 123456', 'Medicina de Família e Comunidade', 'Clínica da Família Santa Marta', '(11) 97123-4567', 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&auto=format&fit=crop&q=80')
-ON CONFLICT (id) DO NOTHING;
+-- 1. Policies para public.users
+DROP POLICY IF EXISTS "users_select_own" ON public.users;
+DROP POLICY IF EXISTS "users_insert_own" ON public.users;
+DROP POLICY IF EXISTS "users_update_own" ON public.users;
+DROP POLICY IF EXISTS "users_delete_own" ON public.users;
 
-INSERT INTO public.patients (id, user_id, name, email, age, gender, conditions, risk_level, healthcare_unit, avatar_url, adherence_rate, phone) VALUES
-('pat-maria', 'u-patient-maria', 'Maria Silva', 'maria.silva@email.com', 58, 'Feminino', ARRAY['HAS', 'DM'], 'ALTO', 'Clínica da Família', 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80', 85, '(11) 98765-4321'),
-('pat-joao', NULL, 'João da Silva', 'joao.silva@email.com', 63, 'Masculino', ARRAY['HAS'], 'ALTO', 'Clínica da Família', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80', 70, '(11) 98888-1111'),
-('pat-ana', NULL, 'Ana Paula Santos', 'ana.santos@email.com', 47, 'Feminino', ARRAY['DM'], 'MODERADO', 'UBS Vila Nova', 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80', 90, '(11) 98888-2222'),
-('pat-carlos-o', NULL, 'Carlos Oliveira', 'carlos.oliveira@email.com', 60, 'Masculino', ARRAY['HAS', 'DM'], 'MODERADO', 'Clínica da Família', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80', 78, '(11) 98888-3333'),
-('pat-jose', NULL, 'José Pereira', 'jose.pereira@email.com', 55, 'Masculino', ARRAY['HAS'], 'BAIXO', 'UBS Jardim São Paulo', 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80', 95, '(11) 98888-4444'),
-('pat-luciana', NULL, 'Luciana Costa', 'luciana.costa@email.com', 49, 'Feminino', ARRAY['DM'], 'BAIXO', 'UBS Central', 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80', 92, '(11) 98888-5555')
-ON CONFLICT (id) DO NOTHING;
+CREATE POLICY "users_select_own" ON public.users FOR SELECT USING (user_id = public.firebase_uid());
+CREATE POLICY "users_insert_own" ON public.users FOR INSERT WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "users_update_own" ON public.users FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "users_delete_own" ON public.users FOR DELETE USING (user_id = public.firebase_uid());
 
-INSERT INTO public.medications (id, patient_id, name, dosage, frequency, reminder_times, notes, is_active) VALUES
-('med-1', 'pat-maria', 'Losartana Potássica', '50mg', 'Todos os dias', ARRAY['08:00'], 'Tomar pela manhã em jejum ou com café', true),
-('med-2', 'pat-maria', 'Hidroclorotiazida', '25mg', 'Todos os dias', ARRAY['08:00'], 'Tomar junto com a Losartana', true),
-('med-3', 'pat-maria', 'Metformina', '850mg', '12 em 12 horas', ARRAY['08:00', '20:00'], 'Tomar após as principais refeições', true)
-ON CONFLICT (id) DO NOTHING;
+-- 2. Policies para public.patients
+DROP POLICY IF EXISTS "patients_select_own" ON public.patients;
+DROP POLICY IF EXISTS "patients_insert_own" ON public.patients;
+DROP POLICY IF EXISTS "patients_update_own" ON public.patients;
+DROP POLICY IF EXISTS "patients_delete_own" ON public.patients;
+
+CREATE POLICY "patients_select_own" ON public.patients FOR SELECT USING (user_id = public.firebase_uid());
+CREATE POLICY "patients_insert_own" ON public.patients FOR INSERT WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "patients_update_own" ON public.patients FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "patients_delete_own" ON public.patients FOR DELETE USING (user_id = public.firebase_uid());
+
+-- 3. Policies para public.professionals
+DROP POLICY IF EXISTS "professionals_select_own" ON public.professionals;
+DROP POLICY IF EXISTS "professionals_insert_own" ON public.professionals;
+DROP POLICY IF EXISTS "professionals_update_own" ON public.professionals;
+DROP POLICY IF EXISTS "professionals_delete_own" ON public.professionals;
+
+CREATE POLICY "professionals_select_own" ON public.professionals FOR SELECT USING (user_id = public.firebase_uid());
+CREATE POLICY "professionals_insert_own" ON public.professionals FOR INSERT WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "professionals_update_own" ON public.professionals FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "professionals_delete_own" ON public.professionals FOR DELETE USING (user_id = public.firebase_uid());
+
+-- 4. Policies para public.blood_pressure_records
+DROP POLICY IF EXISTS "bp_select_own" ON public.blood_pressure_records;
+DROP POLICY IF EXISTS "bp_insert_own" ON public.blood_pressure_records;
+DROP POLICY IF EXISTS "bp_update_own" ON public.blood_pressure_records;
+DROP POLICY IF EXISTS "bp_delete_own" ON public.blood_pressure_records;
+
+CREATE POLICY "bp_select_own" ON public.blood_pressure_records FOR SELECT USING (user_id = public.firebase_uid());
+CREATE POLICY "bp_insert_own" ON public.blood_pressure_records FOR INSERT WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "bp_update_own" ON public.blood_pressure_records FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "bp_delete_own" ON public.blood_pressure_records FOR DELETE USING (user_id = public.firebase_uid());
+
+-- 5. Policies para public.glucose_records
+DROP POLICY IF EXISTS "glucose_select_own" ON public.glucose_records;
+DROP POLICY IF EXISTS "glucose_insert_own" ON public.glucose_records;
+DROP POLICY IF EXISTS "glucose_update_own" ON public.glucose_records;
+DROP POLICY IF EXISTS "glucose_delete_own" ON public.glucose_records;
+
+CREATE POLICY "glucose_select_own" ON public.glucose_records FOR SELECT USING (user_id = public.firebase_uid());
+CREATE POLICY "glucose_insert_own" ON public.glucose_records FOR INSERT WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "glucose_update_own" ON public.glucose_records FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "glucose_delete_own" ON public.glucose_records FOR DELETE USING (user_id = public.firebase_uid());
+
+-- 6. Policies para public.medications
+DROP POLICY IF EXISTS "medications_select_own" ON public.medications;
+DROP POLICY IF EXISTS "medications_insert_own" ON public.medications;
+DROP POLICY IF EXISTS "medications_update_own" ON public.medications;
+DROP POLICY IF EXISTS "medications_delete_own" ON public.medications;
+
+CREATE POLICY "medications_select_own" ON public.medications FOR SELECT USING (user_id = public.firebase_uid());
+CREATE POLICY "medications_insert_own" ON public.medications FOR INSERT WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "medications_update_own" ON public.medications FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "medications_delete_own" ON public.medications FOR DELETE USING (user_id = public.firebase_uid());
+
+-- 7. Policies para public.appointments
+DROP POLICY IF EXISTS "appointments_select_own" ON public.appointments;
+DROP POLICY IF EXISTS "appointments_insert_own" ON public.appointments;
+DROP POLICY IF EXISTS "appointments_update_own" ON public.appointments;
+DROP POLICY IF EXISTS "appointments_delete_own" ON public.appointments;
+
+CREATE POLICY "appointments_select_own" ON public.appointments FOR SELECT USING (user_id = public.firebase_uid());
+CREATE POLICY "appointments_insert_own" ON public.appointments FOR INSERT WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "appointments_update_own" ON public.appointments FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "appointments_delete_own" ON public.appointments FOR DELETE USING (user_id = public.firebase_uid());
+
+-- 8. Policies para public.symptom_logs
+DROP POLICY IF EXISTS "symptom_logs_select_own" ON public.symptom_logs;
+DROP POLICY IF EXISTS "symptom_logs_insert_own" ON public.symptom_logs;
+DROP POLICY IF EXISTS "symptom_logs_update_own" ON public.symptom_logs;
+DROP POLICY IF EXISTS "symptom_logs_delete_own" ON public.symptom_logs;
+
+CREATE POLICY "symptom_logs_select_own" ON public.symptom_logs FOR SELECT USING (user_id = public.firebase_uid());
+CREATE POLICY "symptom_logs_insert_own" ON public.symptom_logs FOR INSERT WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "symptom_logs_update_own" ON public.symptom_logs FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "symptom_logs_delete_own" ON public.symptom_logs FOR DELETE USING (user_id = public.firebase_uid());
+
+-- 9. Policies para public.clinical_alerts
+DROP POLICY IF EXISTS "alerts_select_own" ON public.clinical_alerts;
+DROP POLICY IF EXISTS "alerts_insert_own" ON public.clinical_alerts;
+DROP POLICY IF EXISTS "alerts_update_own" ON public.clinical_alerts;
+DROP POLICY IF EXISTS "alerts_delete_own" ON public.clinical_alerts;
+
+CREATE POLICY "alerts_select_own" ON public.clinical_alerts FOR SELECT USING (user_id = public.firebase_uid());
+CREATE POLICY "alerts_insert_own" ON public.clinical_alerts FOR INSERT WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "alerts_update_own" ON public.clinical_alerts FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "alerts_delete_own" ON public.clinical_alerts FOR DELETE USING (user_id = public.firebase_uid());
+
+-- 10. Policies para public.notification_tokens
+DROP POLICY IF EXISTS "tokens_select_own" ON public.notification_tokens;
+DROP POLICY IF EXISTS "tokens_insert_own" ON public.notification_tokens;
+DROP POLICY IF EXISTS "tokens_update_own" ON public.notification_tokens;
+DROP POLICY IF EXISTS "tokens_delete_own" ON public.notification_tokens;
+
+CREATE POLICY "tokens_select_own" ON public.notification_tokens FOR SELECT USING (user_id = public.firebase_uid());
+CREATE POLICY "tokens_insert_own" ON public.notification_tokens FOR INSERT WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "tokens_update_own" ON public.notification_tokens FOR UPDATE USING (user_id = public.firebase_uid()) WITH CHECK (user_id = public.firebase_uid());
+CREATE POLICY "tokens_delete_own" ON public.notification_tokens FOR DELETE USING (user_id = public.firebase_uid());
+
+-- 11. Policies para public.educational_contents
+DROP POLICY IF EXISTS "educational_select_all" ON public.educational_contents;
+CREATE POLICY "educational_select_all" ON public.educational_contents FOR SELECT USING (true);

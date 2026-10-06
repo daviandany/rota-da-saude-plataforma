@@ -1,5 +1,6 @@
 import { getDatabase } from '../db/database.js';
 import { RiskLevel } from '../domain/entities.js';
+import { ClinicalService } from './clinicalService.js';
 
 export class DoctorService {
   static async getDashboardStats() {
@@ -73,14 +74,14 @@ export class DoctorService {
 
   static async getPatientProfile(patientId: string) {
     const db = await getDatabase();
-    const patient = await db.getPatientById(patientId);
-    if (!patient) throw new Error('Paciente não encontrado.');
+    const patient = await ClinicalService.ensurePatient(patientId);
+    const resolvedId = patient.id;
 
-    const bpRecords = await db.getBloodPressureRecords(patientId);
-    const glucoseRecords = await db.getGlucoseRecords(patientId);
-    const medications = await db.getMedications(patientId);
-    const appointments = await db.getAppointments(patientId);
-    const alerts = await db.getAlerts(patientId);
+    const bpRecords = await db.getBloodPressureRecords(resolvedId);
+    const glucoseRecords = await db.getGlucoseRecords(resolvedId);
+    const medications = await db.getMedications(resolvedId);
+    const appointments = await db.getAppointments(resolvedId);
+    const alerts = await db.getAlerts(resolvedId);
 
     return {
       patient,

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { ArrowLeft, CheckCircle2, AlertCircle, Sparkles, Smile, Frown, Meh, Activity } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationContext';
+import { useAuth } from '../../context/AuthContext';
+import { saveSymptomLogToSupabase } from '../../services/supabaseClient';
 
 interface RegisterSymptomModalProps {
   isOpen: boolean;
@@ -23,6 +25,7 @@ export const RegisterSymptomModal: React.FC<RegisterSymptomModalProps> = ({
   onSuccess,
 }) => {
   const { showNotification } = useNotifications();
+  const { user } = useAuth();
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
@@ -48,11 +51,22 @@ export const RegisterSymptomModal: React.FC<RegisterSymptomModalProps> = ({
     if (selectedSymptoms.length === 0) return;
 
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 400));
-
     const isHigh = selectedSymptoms.some(
       (s) => ['visao_turva', 'palpitacao', 'falta_ar'].includes(s)
     );
+    const isMedium = selectedSymptoms.some((s) => ['cefaleia', 'tontura'].includes(s));
+
+    try {
+      await saveSymptomLogToSupabase({
+        patientId: user?.profileId || undefined,
+        symptoms: selectedSymptoms,
+        severity: isHigh ? 'ALTA' : isMedium ? 'MEDIA' : 'BAIXA',
+        notes,
+        fallbackUserId: user?.id,
+      });
+    } catch (err) {
+      console.warn('[Supabase] Registro de sintoma local mantido:', err);
+    }
 
     showNotification({
       type: isHigh ? 'CRITICAL_READING' : 'GENERAL',

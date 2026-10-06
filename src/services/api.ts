@@ -13,6 +13,13 @@ import {
   Patient,
 } from '../types';
 import { FirestoreClinicalService } from './firestoreService';
+import {
+  saveBloodPressureToSupabase,
+  saveGlucoseToSupabase,
+  saveMedicationToSupabase,
+  saveAppointmentToSupabase,
+  saveUserProfileToSupabase,
+} from './supabaseClient';
 
 const API_BASE = '/api';
 
@@ -159,6 +166,24 @@ export const api = {
     riskLevel?: string;
   }): Promise<{ success: boolean; user: User }> {
     const { data } = await apiClient.put('/auth/profile', payload);
+    try {
+      await saveUserProfileToSupabase({
+        name: data.user.name,
+        email: data.user.email,
+        role: data.user.role,
+        age: payload.age,
+        gender: payload.gender,
+        conditions: payload.conditions,
+        healthcareUnit: payload.healthcareUnit,
+        phone: payload.phone,
+        crm: payload.crm,
+        specialty: payload.specialty,
+        riskLevel: payload.riskLevel as any,
+        fallbackUserId: data.user.id,
+      });
+    } catch (e) {
+      console.warn('[Supabase] Sincronização de perfil ignorada:', e);
+    }
     return data;
   },
 
@@ -182,6 +207,20 @@ export const api = {
     const record = data.data;
 
     try {
+      await saveBloodPressureToSupabase({
+        patientId: record.patientId,
+        systolic: record.systolic,
+        diastolic: record.diastolic,
+        pulse: record.pulse,
+        recordedAt: record.recordedAt,
+        notes: record.notes,
+        fallbackUserId: record.patientId,
+      });
+    } catch (e) {
+      console.warn('[Supabase] Registro de pressão local mantido:', e);
+    }
+
+    try {
       await FirestoreClinicalService.recordBloodPressure(record);
     } catch (e) {
       console.warn('[Firestore] Registro local mantido, erro no Firestore:', e);
@@ -199,6 +238,19 @@ export const api = {
   }): Promise<GlucoseRecord> {
     const { data } = await apiClient.post('/clinical/glucose', payload);
     const record = data.data;
+
+    try {
+      await saveGlucoseToSupabase({
+        patientId: record.patientId,
+        glucoseValue: record.glucoseValue,
+        moment: record.moment,
+        recordedAt: record.recordedAt,
+        notes: record.notes,
+        fallbackUserId: record.patientId,
+      });
+    } catch (e) {
+      console.warn('[Supabase] Registro de glicemia local mantido:', e);
+    }
 
     try {
       await FirestoreClinicalService.recordGlucose(record);
@@ -234,6 +286,20 @@ export const api = {
   }): Promise<Medication> {
     const { data } = await apiClient.post('/medications', payload);
     const med = data.data;
+
+    try {
+      await saveMedicationToSupabase({
+        patientId: med.patientId,
+        name: med.name,
+        dosage: med.dosage,
+        frequency: med.frequency,
+        reminderTimes: med.reminderTimes,
+        notes: med.notes,
+        fallbackUserId: med.patientId,
+      });
+    } catch (e) {
+      console.warn('[Supabase] Registro de medicamento local mantido:', e);
+    }
 
     try {
       await FirestoreClinicalService.addMedication(med);
@@ -284,6 +350,23 @@ export const api = {
   async createAppointment(payload: any): Promise<Appointment> {
     const { data } = await apiClient.post('/appointments', payload);
     const app = data.data;
+
+    try {
+      await saveAppointmentToSupabase({
+        patientId: app.patientId,
+        patientName: app.patientName,
+        patientAge: app.patientAge,
+        patientConditions: app.patientConditions,
+        doctorName: app.doctorName,
+        clinicName: app.clinicName,
+        scheduledFor: app.scheduledFor,
+        appointmentType: app.appointmentType,
+        notes: app.notes,
+        fallbackUserId: app.patientId,
+      });
+    } catch (e) {
+      console.warn('[Supabase] Agendamento local mantido:', e);
+    }
 
     try {
       await FirestoreClinicalService.createAppointment(app);
