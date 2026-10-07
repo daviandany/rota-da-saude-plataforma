@@ -6,14 +6,19 @@ import {
   ClinicalAlert,
 } from '../domain/entities.js';
 import { NotificationService } from './notificationService.js';
+import { deriveDeterministicId } from './authService.js';
 
 export class ClinicalService {
   static async ensurePatient(
     patientId?: string,
-    fallbackUser?: { userId?: string; name?: string; email?: string }
+    fallbackUser?: { userId?: string; profileId?: string; name?: string; email?: string }
   ) {
     const db = await getDatabase();
     let patient = patientId ? await db.getPatientById(patientId) : undefined;
+
+    if (!patient && fallbackUser?.profileId) {
+      patient = await db.getPatientById(fallbackUser.profileId);
+    }
 
     if (!patient && fallbackUser?.userId) {
       patient = await db.getPatientByUserId(fallbackUser.userId);
@@ -29,16 +34,26 @@ export class ClinicalService {
       if (u) {
         patient = await db.getPatientByUserId(u.id);
       }
+      if (!patient) {
+        const detId = deriveDeterministicId('pat', fallbackUser.email);
+        patient = await db.getPatientById(detId);
+      }
     }
 
     if (!patient) {
-      // Auto-cria o prontuário do paciente caso o container Serverless tenha reiniciado
-      const newPatientId = patientId || 'pat-' + (fallbackUser?.userId || Date.now());
+      // Auto-cria o prontuário exclusivo do usuário autenticado
+      const uniqueKey = fallbackUser?.email || fallbackUser?.userId || patientId || String(Date.now());
+      const newPatientId =
+        (patientId && patientId !== 'pat-maria' ? patientId : undefined) ||
+        fallbackUser?.profileId ||
+        deriveDeterministicId('pat', uniqueKey);
+      const newUserId = fallbackUser?.userId || deriveDeterministicId('u', uniqueKey);
+
       patient = await db.createPatient({
         id: newPatientId,
-        userId: fallbackUser?.userId || 'u-' + Date.now(),
+        userId: newUserId,
         name: fallbackUser?.name || 'Paciente',
-        email: fallbackUser?.email || 'paciente@rotadasaude.gov.br',
+        email: fallbackUser?.email || `${newUserId}@rotadasaude.gov.br`,
         age: 55,
         gender: 'Não especificado',
         conditions: ['Hipertensão Arterial (HAS)', 'Diabetes Mellitus Tipo 2'],

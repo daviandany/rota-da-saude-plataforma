@@ -132,7 +132,7 @@ export const authController = {
 export const clinicalController = {
   async getSummary(req: Request, res: Response) {
     try {
-      const patientId = (req.query.patientId as string) || req.user?.profileId || req.user?.userId || 'pat-maria';
+      const patientId = (req.query.patientId as string) || req.user?.profileId || req.user?.userId || '';
       const summary = await ClinicalService.getPatientSummary(patientId, req.user);
       return res.json({ success: true, data: summary });
     } catch (err: any) {
@@ -142,7 +142,7 @@ export const clinicalController = {
 
   async recordPressure(req: Request, res: Response) {
     try {
-      const patientId = req.body.patientId || req.user?.profileId || req.user?.userId || 'pat-maria';
+      const patientId = req.body.patientId || req.user?.profileId || req.user?.userId || '';
       const { systolic, diastolic, pulse, recordedAt, notes } = req.body;
 
       if (!systolic || !diastolic) {
@@ -173,7 +173,7 @@ export const clinicalController = {
 
   async recordGlucose(req: Request, res: Response) {
     try {
-      const patientId = req.body.patientId || req.user?.profileId || req.user?.userId || 'pat-maria';
+      const patientId = req.body.patientId || req.user?.profileId || req.user?.userId || '';
       const { glucoseValue, moment, recordedAt, notes } = req.body;
 
       if (!glucoseValue || !moment) {
@@ -299,9 +299,11 @@ export const medicationController = {
 export const appointmentController = {
   async getAppointments(req: Request, res: Response) {
     try {
-      const patientId =
-        (req.query.patientId as string) ||
-        (req.user?.role === 'PATIENT' ? req.user?.profileId : undefined);
+      let patientId = req.query.patientId as string | undefined;
+      if (!patientId && req.user?.role === 'PATIENT') {
+        const patient = await ClinicalService.ensurePatient(req.user?.profileId, req.user);
+        patientId = patient.id;
+      }
       const appointments = await AppointmentService.getByPatientOrAll(patientId);
       return res.json({ success: true, data: appointments });
     } catch (err: any) {
@@ -323,31 +325,24 @@ export const appointmentController = {
         notes,
       } = req.body;
 
-      const db = await getDatabase();
-      const targetPatientId = patientId || req.user?.profileId || ('pat-' + Date.now());
-      let pName = patientName;
-      let pConditions = patientConditions;
-      let pAge = patientAge;
-      let pUnit = clinicName;
-
-      if (targetPatientId) {
-        const patient = await db.getPatientById(targetPatientId);
-        if (patient) {
-          pName = pName || patient.name;
-          pConditions = pConditions || patient.conditions;
-          pAge = pAge || patient.age;
-          pUnit = pUnit || patient.healthcareUnit;
-        }
-      }
+      const patient = await ClinicalService.ensurePatient(
+        patientId || req.user?.profileId,
+        req.user
+      );
+      const targetPatientId = patient.id;
+      const pName = patientName || patient.name || req.user?.name || 'Paciente';
+      const pConditions = patientConditions || patient.conditions || [];
+      const pAge = patientAge || patient.age || 45;
+      const pUnit = clinicName || patient.healthcareUnit || 'UBS de Referência';
 
       const app = await AppointmentService.create({
         patientId: targetPatientId,
-        patientName: pName || req.user?.name || 'Paciente',
-        patientConditions: pConditions || [],
-        patientAge: pAge || 45,
+        patientName: pName,
+        patientConditions: pConditions,
+        patientAge: pAge,
         appointmentType: appointmentType || 'Consulta de Rotina Hiperdia',
         scheduledFor: scheduledFor || new Date(Date.now() + 86400000 * 3).toISOString(),
-        clinicName: pUnit || 'UBS de Referência',
+        clinicName: pUnit,
         doctorName: doctorName || 'Equipe de Saúde da Família',
         notes: notes || 'Consulta agendada no sistema.',
       });
@@ -362,7 +357,11 @@ export const appointmentController = {
 export const alertController = {
   async getAlerts(req: Request, res: Response) {
     try {
-      const patientId = req.query.patientId as string;
+      let patientId = req.query.patientId as string | undefined;
+      if (!patientId && req.user?.role === 'PATIENT') {
+        const patient = await ClinicalService.ensurePatient(req.user?.profileId, req.user);
+        patientId = patient.id;
+      }
       const severity = req.query.severity as string;
       const alerts = await AlertService.getAlerts(patientId, severity);
       return res.json({ success: true, data: alerts });
@@ -398,12 +397,15 @@ export const contentController = {
 export const reportController = {
   async generateReport(req: Request, res: Response) {
     try {
-      const patientId = (req.query.patientId as string) || req.user?.profileId || 'pat-maria';
+      const patient = await ClinicalService.ensurePatient(
+        (req.query.patientId as string) || req.user?.profileId,
+        req.user
+      );
+      const patientId = patient.id;
       const startDate = (req.query.startDate as string) || '2025-01-01';
       const endDate = (req.query.endDate as string) || '2025-06-07';
 
       const db = await getDatabase();
-      const patient = await db.getPatientById(patientId);
       const bpRecords = await db.getBloodPressureRecords(patientId);
       const glucoseRecords = await db.getGlucoseRecords(patientId);
       const meds = await db.getMedications(patientId);

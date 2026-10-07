@@ -140,13 +140,13 @@ const MainApp: React.FC = () => {
         isOpen={isPressureModalOpen}
         onClose={() => setIsPressureModalOpen(false)}
         onSuccess={triggerRefresh}
-        patientId={user.profileId || undefined}
+        patientId={user.profileId || user.id}
       />
       <RegisterGlucoseModal
         isOpen={isGlucoseModalOpen}
         onClose={() => setIsGlucoseModalOpen(false)}
         onSuccess={triggerRefresh}
-        patientId={user.profileId || undefined}
+        patientId={user.profileId || user.id}
       />
       <RegisterSymptomModal
         isOpen={isSymptomModalOpen}
@@ -166,7 +166,7 @@ const MainApp: React.FC = () => {
         isOpen={isAddMedModalOpen}
         onClose={() => setIsAddMedModalOpen(false)}
         onSuccess={triggerRefresh}
-        patientId={selectedPatientId || user.profileId || undefined}
+        patientId={selectedPatientId || user.profileId || user.id}
       />
 
       {/* Modais Clínicos do Profissional / Médico */}

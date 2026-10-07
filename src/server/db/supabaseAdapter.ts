@@ -33,6 +33,11 @@ export class SupabaseAdapter implements IDatabase {
   private localProfessionals: Map<string, Professional> = new Map(
     initialProfessionals.map((p) => [p.id, p])
   );
+  private localBP: Map<string, BloodPressureRecord> = new Map();
+  private localGlucose: Map<string, GlucoseRecord> = new Map();
+  private localMedications: Map<string, Medication> = new Map();
+  private localAppointments: Map<string, Appointment> = new Map();
+  private localAlerts: Map<string, ClinicalAlert> = new Map();
 
   constructor(
     private supabaseUrl: string,
@@ -552,30 +557,39 @@ export class SupabaseAdapter implements IDatabase {
 
   // Blood Pressure
   async getBloodPressureRecords(patientId: string): Promise<BloodPressureRecord[]> {
-    if (!this.client) return [];
-    const { data, error } = await this.client
-      .from('blood_pressure_records')
-      .select('*')
-      .eq('patient_id', patientId)
-      .order('recorded_at', { ascending: false });
+    if (this.client && patientId) {
+      const { data, error } = await this.client
+        .from('blood_pressure_records')
+        .select('*')
+        .eq('patient_id', patientId)
+        .order('recorded_at', { ascending: false });
 
-    if (error || !data) return [];
-    return data.map((d: any) => ({
-      id: d.id,
-      patientId: d.patient_id,
-      systolic: d.systolic,
-      diastolic: d.diastolic,
-      pulse: d.pulse,
-      recordedAt: d.recorded_at,
-      notes: d.notes,
-      isCritical: d.is_critical,
-      statusText: d.status_text,
-      createdAt: d.created_at,
-    }));
+      if (!error && data) {
+        data.forEach((d: any) => {
+          this.localBP.set(d.id, {
+            id: d.id,
+            patientId: d.patient_id,
+            systolic: d.systolic,
+            diastolic: d.diastolic,
+            pulse: d.pulse,
+            recordedAt: d.recorded_at,
+            notes: d.notes,
+            isCritical: d.is_critical,
+            statusText: d.status_text,
+            createdAt: d.created_at,
+          });
+        });
+      }
+    }
+
+    return Array.from(this.localBP.values())
+      .filter((r) => r.patientId === patientId)
+      .sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime());
   }
 
   async addBloodPressureRecord(record: BloodPressureRecord): Promise<BloodPressureRecord> {
-    if (!this.client) throw new Error('Supabase indisponível');
+    this.localBP.set(record.id, record);
+    if (!this.client) return record;
     await this.client.from('blood_pressure_records').upsert(
       {
         id: record.id,
@@ -597,29 +611,38 @@ export class SupabaseAdapter implements IDatabase {
 
   // Glucose
   async getGlucoseRecords(patientId: string): Promise<GlucoseRecord[]> {
-    if (!this.client) return [];
-    const { data, error } = await this.client
-      .from('glucose_records')
-      .select('*')
-      .eq('patient_id', patientId)
-      .order('recorded_at', { ascending: false });
+    if (this.client && patientId) {
+      const { data, error } = await this.client
+        .from('glucose_records')
+        .select('*')
+        .eq('patient_id', patientId)
+        .order('recorded_at', { ascending: false });
 
-    if (error || !data) return [];
-    return data.map((d: any) => ({
-      id: d.id,
-      patientId: d.patient_id,
-      glucoseValue: d.glucose_value,
-      moment: d.moment,
-      recordedAt: d.recorded_at,
-      notes: d.notes,
-      isCritical: d.is_critical,
-      statusText: d.status_text,
-      createdAt: d.created_at,
-    }));
+      if (!error && data) {
+        data.forEach((d: any) => {
+          this.localGlucose.set(d.id, {
+            id: d.id,
+            patientId: d.patient_id,
+            glucoseValue: d.glucose_value,
+            moment: d.moment,
+            recordedAt: d.recorded_at,
+            notes: d.notes,
+            isCritical: d.is_critical,
+            statusText: d.status_text,
+            createdAt: d.created_at,
+          });
+        });
+      }
+    }
+
+    return Array.from(this.localGlucose.values())
+      .filter((r) => r.patientId === patientId)
+      .sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime());
   }
 
   async addGlucoseRecord(record: GlucoseRecord): Promise<GlucoseRecord> {
-    if (!this.client) throw new Error('Supabase indisponível');
+    this.localGlucose.set(record.id, record);
+    if (!this.client) return record;
     await this.client.from('glucose_records').upsert(
       {
         id: record.id,
@@ -640,28 +663,35 @@ export class SupabaseAdapter implements IDatabase {
 
   // Medications
   async getMedications(patientId: string): Promise<Medication[]> {
-    if (!this.client) return [];
-    const { data, error } = await this.client
-      .from('medications')
-      .select('*')
-      .eq('patient_id', patientId);
+    if (this.client && patientId) {
+      const { data, error } = await this.client
+        .from('medications')
+        .select('*')
+        .eq('patient_id', patientId);
 
-    if (error || !data) return [];
-    return data.map((d: any) => ({
-      id: d.id,
-      patientId: d.patient_id,
-      name: d.name,
-      dosage: d.dosage,
-      frequency: d.frequency,
-      reminderTimes: d.reminder_times || ['08:00'],
-      status: (d.status || (d.is_active ? 'ATIVO' : 'SUSPENSO')) as 'ATIVO' | 'SUSPENSO' | 'CONCLUIDO',
-      notes: d.notes,
-      createdAt: d.created_at,
-    }));
+      if (!error && data) {
+        data.forEach((d: any) => {
+          this.localMedications.set(d.id, {
+            id: d.id,
+            patientId: d.patient_id,
+            name: d.name,
+            dosage: d.dosage,
+            frequency: d.frequency,
+            reminderTimes: d.reminder_times || ['08:00'],
+            status: (d.status || (d.is_active ? 'ATIVO' : 'SUSPENSO')) as 'ATIVO' | 'SUSPENSO' | 'CONCLUIDO',
+            notes: d.notes,
+            createdAt: d.created_at,
+          });
+        });
+      }
+    }
+
+    return Array.from(this.localMedications.values()).filter((m) => m.patientId === patientId);
   }
 
   async addMedication(medication: Medication): Promise<Medication> {
-    if (!this.client) throw new Error('Supabase indisponível');
+    this.localMedications.set(medication.id, medication);
+    if (!this.client) return medication;
     await this.client.from('medications').upsert(
       {
         id: medication.id,
@@ -682,7 +712,11 @@ export class SupabaseAdapter implements IDatabase {
   }
 
   async updateMedication(id: string, data: Partial<Medication>): Promise<Medication | null> {
-    if (!this.client) return null;
+    const existing = this.localMedications.get(id);
+    if (existing) {
+      this.localMedications.set(id, { ...existing, ...data });
+    }
+    if (!this.client) return this.localMedications.get(id) || null;
     const patch: Record<string, any> = {};
     if (data.status !== undefined) {
       patch.status = data.status;
@@ -700,8 +734,8 @@ export class SupabaseAdapter implements IDatabase {
       .select('*')
       .maybeSingle();
 
-    if (!updated) return null;
-    return {
+    if (!updated) return this.localMedications.get(id) || null;
+    const result: Medication = {
       id: updated.id,
       patientId: updated.patient_id,
       name: updated.name,
@@ -712,36 +746,47 @@ export class SupabaseAdapter implements IDatabase {
       notes: updated.notes,
       createdAt: updated.created_at,
     };
+    this.localMedications.set(result.id, result);
+    return result;
   }
 
   // Appointments
   async getAppointments(patientId?: string): Promise<Appointment[]> {
-    if (!this.client) return [];
-    let query = this.client.from('appointments').select('*').order('scheduled_for', { ascending: true });
-    if (patientId) {
-      query = query.eq('patient_id', patientId);
+    if (this.client) {
+      let query = this.client.from('appointments').select('*').order('scheduled_for', { ascending: true });
+      if (patientId) {
+        query = query.eq('patient_id', patientId);
+      }
+      const { data, error } = await query;
+      if (!error && data) {
+        data.forEach((d: any) => {
+          this.localAppointments.set(d.id, {
+            id: d.id,
+            patientId: d.patient_id,
+            professionalId: d.professional_id,
+            patientName: d.patient_name || 'Paciente',
+            patientAge: d.patient_age,
+            patientConditions: d.patient_conditions || [],
+            doctorName: d.doctor_name,
+            clinicName: d.clinic_name,
+            scheduledFor: d.scheduled_for,
+            appointmentType: d.appointment_type,
+            notes: d.notes,
+            status: d.status,
+            createdAt: d.created_at,
+          });
+        });
+      }
     }
-    const { data, error } = await query;
-    if (error || !data) return [];
-    return data.map((d: any) => ({
-      id: d.id,
-      patientId: d.patient_id,
-      professionalId: d.professional_id,
-      patientName: d.patient_name || 'Paciente',
-      patientAge: d.patient_age,
-      patientConditions: d.patient_conditions || [],
-      doctorName: d.doctor_name,
-      clinicName: d.clinic_name,
-      scheduledFor: d.scheduled_for,
-      appointmentType: d.appointment_type,
-      notes: d.notes,
-      status: d.status,
-      createdAt: d.created_at,
-    }));
+
+    const all = Array.from(this.localAppointments.values());
+    const filtered = patientId ? all.filter((a) => a.patientId === patientId) : all;
+    return filtered.sort((a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime());
   }
 
   async addAppointment(appointment: Appointment): Promise<Appointment> {
-    if (!this.client) throw new Error('Supabase indisponível');
+    this.localAppointments.set(appointment.id, appointment);
+    if (!this.client) return appointment;
     await this.client.from('appointments').upsert(
       {
         id: appointment.id,
@@ -766,31 +811,40 @@ export class SupabaseAdapter implements IDatabase {
 
   // Alerts
   async getAlerts(patientId?: string): Promise<ClinicalAlert[]> {
-    if (!this.client) return [];
-    let query = this.client.from('clinical_alerts').select('*').order('triggered_at', { ascending: false });
-    if (patientId) {
-      query = query.eq('patient_id', patientId);
+    if (this.client) {
+      let query = this.client.from('clinical_alerts').select('*').order('triggered_at', { ascending: false });
+      if (patientId) {
+        query = query.eq('patient_id', patientId);
+      }
+      const { data, error } = await query;
+      if (!error && data) {
+        data.forEach((d: any) => {
+          this.localAlerts.set(d.id, {
+            id: d.id,
+            patientId: d.patient_id,
+            patientName: d.patient_name,
+            patientAge: d.patient_age,
+            patientConditions: d.patient_conditions || [],
+            severity: d.severity,
+            title: d.title,
+            message: d.message,
+            valueRecorded: d.value_recorded,
+            metricType: d.metric_type,
+            status: d.status,
+            triggeredAt: d.triggered_at,
+          });
+        });
+      }
     }
-    const { data, error } = await query;
-    if (error || !data) return [];
-    return data.map((d: any) => ({
-      id: d.id,
-      patientId: d.patient_id,
-      patientName: d.patient_name,
-      patientAge: d.patient_age,
-      patientConditions: d.patient_conditions || [],
-      severity: d.severity,
-      title: d.title,
-      message: d.message,
-      valueRecorded: d.value_recorded,
-      metricType: d.metric_type,
-      status: d.status,
-      triggeredAt: d.triggered_at,
-    }));
+
+    const all = Array.from(this.localAlerts.values());
+    const filtered = patientId ? all.filter((a) => a.patientId === patientId) : all;
+    return filtered.sort((a, b) => new Date(b.triggeredAt).getTime() - new Date(a.triggeredAt).getTime());
   }
 
   async addAlert(alert: ClinicalAlert): Promise<ClinicalAlert> {
-    if (!this.client) throw new Error('Supabase indisponível');
+    this.localAlerts.set(alert.id, alert);
+    if (!this.client) return alert;
     await this.client.from('clinical_alerts').upsert(
       {
         id: alert.id,
@@ -814,9 +868,14 @@ export class SupabaseAdapter implements IDatabase {
   }
 
   async resolveAlert(id: string): Promise<boolean> {
-    if (!this.client) return false;
+    const existing = this.localAlerts.get(id);
+    if (existing) {
+      existing.status = 'RESOLVIDO';
+      this.localAlerts.set(id, existing);
+    }
+    if (!this.client) return Boolean(existing);
     const { error } = await this.client.from('clinical_alerts').update({ status: 'RESOLVIDO' }).eq('id', id);
-    return !error;
+    return !error || Boolean(existing);
   }
 
   // Educational

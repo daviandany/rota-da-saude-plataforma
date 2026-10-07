@@ -6,21 +6,40 @@ import { verifyFirebaseIdToken } from '../config/firebaseAdmin.js';
 import { AuthenticatedUserPayload } from '../middlewares/authMiddleware.js';
 import { User, UserRole } from '../domain/entities.js';
 
+export function deriveDeterministicId(prefix: string, identifier: string): string {
+  const clean = identifier.trim().toLowerCase();
+  let hash = 0;
+  for (let i = 0; i < clean.length; i++) {
+    hash = (hash * 31 + clean.charCodeAt(i)) | 0;
+  }
+  const slug = clean
+    .split('@')[0]
+    .replace(/[^a-z0-9]/g, '')
+    .slice(0, 12);
+  return `${prefix}-${slug || 'user'}-${Math.abs(hash).toString(36)}`;
+}
+
 export class AuthService {
   static async login(email: string, password: string, name?: string, role: UserRole = 'PATIENT') {
     const db = await getDatabase();
-    let user = await db.getUserByEmail(email);
+    const normalizedEmail = email.trim().toLowerCase();
+    let user = await db.getUserByEmail(normalizedEmail);
 
     if (!user) {
-      // Auto-registra o cliente com o nome e perfil fornecido caso ainda não exista
+      // Auto-registra o cliente com ID determinístico único baseado no e-mail
       const salt = await bcrypt.genSalt(10);
       const passwordHash = await bcrypt.hash(password, salt);
-      const userId = 'u-' + Date.now();
-      const displayName = name?.trim() || email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+      const userId = deriveDeterministicId('u', normalizedEmail);
+      const displayName =
+        name?.trim() ||
+        normalizedEmail
+          .split('@')[0]
+          .replace(/[._-]/g, ' ')
+          .replace(/\b\w/g, (c) => c.toUpperCase());
 
       const newUser: User = {
         id: userId,
-        email,
+        email: normalizedEmail,
         passwordHash,
         name: displayName,
         role: role || 'PATIENT',
@@ -32,12 +51,12 @@ export class AuthService {
 
       let profileId = '';
       if (user.role === 'PATIENT') {
-        profileId = 'pat-' + Date.now();
+        profileId = deriveDeterministicId('pat', normalizedEmail);
         await db.createPatient({
           id: profileId,
           userId,
           name: displayName,
-          email,
+          email: normalizedEmail,
           age: 52,
           gender: 'Não informado',
           conditions: ['Hipertensão Arterial (HAS)', 'Diabetes Mellitus Tipo 2'],
@@ -48,12 +67,12 @@ export class AuthService {
           createdAt: new Date().toISOString(),
         });
       } else {
-        profileId = 'prof-' + Date.now();
+        profileId = deriveDeterministicId('prof', normalizedEmail);
         await db.createProfessional({
           id: profileId,
           userId,
           name: displayName.startsWith('Dr') ? displayName : `Dr(a). ${displayName}`,
-          email,
+          email: normalizedEmail,
           crm: 'CRM ' + Math.floor(10000 + Math.random() * 89999) + '/SP',
           specialty: 'Medicina de Família e Comunidade',
           healthcareUnit: 'UBS Dr. Manoel de Abreu',
@@ -63,7 +82,6 @@ export class AuthService {
     } else {
       const isMatch = await bcrypt.compare(password, user.passwordHash);
       if (!isMatch) {
-        // Se a senha não coincidir, mas for a senha de demonstração padrão
         if (password === 'paciente123' || password === 'medico123') {
           // Permite login com senha mestra de demonstração
         } else {
@@ -76,17 +94,43 @@ export class AuthService {
     let profileData: any = null;
 
     if (user.role === 'PATIENT') {
-      const patient = await db.getPatientByUserId(user.id);
-      if (patient) {
-        profileId = patient.id;
-        profileData = patient;
+      let patient = await db.getPatientByUserId(user.id);
+      if (!patient) {
+        const detPatId = deriveDeterministicId('pat', user.email);
+        patient = (await db.getPatientById(detPatId)) || (await db.createPatient({
+          id: detPatId,
+          userId: user.id,
+          name: user.name,
+          email: user.email,
+          age: 52,
+          gender: 'Não informado',
+          conditions: ['Hipertensão Arterial (HAS)', 'Diabetes Mellitus Tipo 2'],
+          riskLevel: 'MODERADO',
+          healthcareUnit: 'UBS Dr. Manoel de Abreu',
+          adherenceRate: 92,
+          phone: '(11) 98765-4321',
+          createdAt: new Date().toISOString(),
+        }));
       }
+      profileId = patient.id;
+      profileData = patient;
     } else if (user.role === 'PROFESSIONAL') {
-      const professional = await db.getProfessionalByUserId(user.id);
-      if (professional) {
-        profileId = professional.id;
-        profileData = professional;
+      let professional = await db.getProfessionalByUserId(user.id);
+      if (!professional) {
+        const detProfId = deriveDeterministicId('prof', user.email);
+        professional = (await db.getProfessionalById(detProfId)) || (await db.createProfessional({
+          id: detProfId,
+          userId: user.id,
+          name: user.name,
+          email: user.email,
+          crm: 'CRM 12345/SP',
+          specialty: 'Medicina de Família e Comunidade',
+          healthcareUnit: 'UBS Dr. Manoel de Abreu',
+          createdAt: new Date().toISOString(),
+        }));
       }
+      profileId = professional.id;
+      profileData = professional;
     }
 
     const payload: AuthenticatedUserPayload = {
@@ -125,18 +169,19 @@ export class AuthService {
     conditions?: string[];
   }) {
     const db = await getDatabase();
-    const existing = await db.getUserByEmail(data.email);
+    const normalizedEmail = data.email.trim().toLowerCase();
+    const existing = await db.getUserByEmail(normalizedEmail);
     if (existing) {
       throw new Error('Este e-mail já está cadastrado no sistema.');
     }
 
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(data.password, salt);
-    const userId = 'u-' + Date.now();
+    const userId = deriveDeterministicId('u', normalizedEmail);
 
     const newUser: User = {
       id: userId,
-      email: data.email,
+      email: normalizedEmail,
       passwordHash,
       name: data.name,
       role: data.role,
@@ -149,12 +194,12 @@ export class AuthService {
     let profileData: any = null;
 
     if (data.role === 'PATIENT') {
-      profileId = 'pat-' + Date.now();
+      profileId = deriveDeterministicId('pat', normalizedEmail);
       const patient = await db.createPatient({
         id: profileId,
         userId,
         name: data.name,
-        email: data.email,
+        email: normalizedEmail,
         age: data.age || 45,
         gender: data.gender || 'Não informado',
         conditions: data.conditions || ['HAS'],
@@ -165,12 +210,12 @@ export class AuthService {
       });
       profileData = patient;
     } else {
-      profileId = 'prof-' + Date.now();
+      profileId = deriveDeterministicId('prof', normalizedEmail);
       const prof = await db.createProfessional({
         id: profileId,
         userId,
         name: data.name,
-        email: data.email,
+        email: normalizedEmail,
         crm: data.crm || 'CRM 00000',
         specialty: 'Medicina de Família',
         healthcareUnit: 'Clínica da Família',
@@ -255,18 +300,19 @@ export class AuthService {
     }
 
     const db = await getDatabase();
-    let user = await db.getUserByEmail(payload.email);
+    const normalizedEmail = payload.email.trim().toLowerCase();
+    let user = await db.getUserByEmail(normalizedEmail);
 
     if (!user) {
-      const userId = 'u-google-' + payload.uid.slice(0, 16);
+      const userId = payload.uid ? 'u-google-' + payload.uid.slice(0, 16) : deriveDeterministicId('u', normalizedEmail);
       const salt = await bcrypt.genSalt(10);
       const passwordHash = await bcrypt.hash(payload.uid + '-google-oauth', salt);
 
       const newUser: User = {
         id: userId,
-        email: payload.email,
+        email: normalizedEmail,
         passwordHash,
-        name: payload.name || payload.email.split('@')[0],
+        name: payload.name || normalizedEmail.split('@')[0],
         role: payload.role,
         createdAt: new Date().toISOString(),
       };
@@ -276,12 +322,12 @@ export class AuthService {
 
       let profileId = '';
       if (payload.role === 'PATIENT') {
-        profileId = 'pat-' + Date.now();
+        profileId = deriveDeterministicId('pat', normalizedEmail);
         await db.createPatient({
           id: profileId,
           userId,
           name: payload.name || 'Paciente Google',
-          email: payload.email,
+          email: normalizedEmail,
           age: 55,
           gender: 'Não especificado',
           conditions: ['Hipertensão Arterial (HAS)', 'Diabetes Mellitus Tipo 2'],
@@ -293,12 +339,12 @@ export class AuthService {
           createdAt: new Date().toISOString(),
         });
       } else {
-        profileId = 'prof-' + Date.now();
+        profileId = deriveDeterministicId('prof', normalizedEmail);
         await db.createProfessional({
           id: profileId,
           userId,
           name: payload.name || 'Dr(a). Google',
-          email: payload.email,
+          email: normalizedEmail,
           crm: 'CRM ' + Math.floor(10000 + Math.random() * 89999) + '/SP',
           specialty: 'Medicina de Família e Comunidade',
           healthcareUnit: 'UBS Dr. Manoel de Abreu',
@@ -312,17 +358,45 @@ export class AuthService {
     let profileData: any = null;
 
     if (user.role === 'PATIENT') {
-      const patient = await db.getPatientByUserId(user.id);
-      if (patient) {
-        profileId = patient.id;
-        profileData = patient;
+      let patient = await db.getPatientByUserId(user.id);
+      if (!patient) {
+        const detPatId = deriveDeterministicId('pat', user.email);
+        patient = (await db.getPatientById(detPatId)) || (await db.createPatient({
+          id: detPatId,
+          userId: user.id,
+          name: user.name,
+          email: user.email,
+          age: 55,
+          gender: 'Não especificado',
+          conditions: ['Hipertensão Arterial (HAS)', 'Diabetes Mellitus Tipo 2'],
+          riskLevel: 'MODERADO',
+          healthcareUnit: 'UBS Dr. Manoel de Abreu',
+          avatarUrl: payload.photoURL,
+          adherenceRate: 94,
+          phone: '(11) 98765-4321',
+          createdAt: new Date().toISOString(),
+        }));
       }
+      profileId = patient.id;
+      profileData = patient;
     } else {
-      const professional = await db.getProfessionalByUserId(user.id);
-      if (professional) {
-        profileId = professional.id;
-        profileData = professional;
+      let professional = await db.getProfessionalByUserId(user.id);
+      if (!professional) {
+        const detProfId = deriveDeterministicId('prof', user.email);
+        professional = (await db.getProfessionalById(detProfId)) || (await db.createProfessional({
+          id: detProfId,
+          userId: user.id,
+          name: user.name,
+          email: user.email,
+          crm: 'CRM 12345/SP',
+          specialty: 'Medicina de Família e Comunidade',
+          healthcareUnit: 'UBS Dr. Manoel de Abreu',
+          avatarUrl: payload.photoURL,
+          createdAt: new Date().toISOString(),
+        }));
       }
+      profileId = professional.id;
+      profileData = professional;
     }
 
     const tokenPayload: AuthenticatedUserPayload = {

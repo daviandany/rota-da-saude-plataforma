@@ -21,8 +21,13 @@ export const supabase = isSupabaseConfigured
         fetch: async (url, options = {}) => {
           const headers = new Headers(options.headers);
           const currentUser = getAuth().currentUser;
-          if (currentUser?.uid) {
-            headers.set('x-firebase-uid', currentUser.uid);
+          const activeUserId =
+            currentUser?.uid ||
+            localStorage.getItem('active_user_id') ||
+            localStorage.getItem('firebase_uid_hint') ||
+            '';
+          if (activeUserId) {
+            headers.set('x-firebase-uid', activeUserId);
           }
           return fetch(url, { ...options, headers });
         },

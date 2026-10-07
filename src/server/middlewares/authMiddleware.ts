@@ -4,6 +4,7 @@ import { config } from '../config/index.js';
 import { verifyFirebaseIdToken } from '../config/firebaseAdmin.js';
 import { getDatabase } from '../db/database.js';
 import { UserRole } from '../domain/entities.js';
+import { deriveDeterministicId } from '../services/authService.js';
 
 export interface AuthenticatedUserPayload {
   userId: string;
@@ -45,9 +46,10 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     }
 
     if (!user) {
+      const uniqueEmail = decoded.email || `${decoded.userId || Date.now()}@rotadasaude.gov.br`;
       user = await db.createUser({
-        id: decoded.userId || 'u-' + Date.now(),
-        email: decoded.email || 'paciente@rotadasaude.gov.br',
+        id: decoded.userId || deriveDeterministicId('u', uniqueEmail),
+        email: uniqueEmail,
         passwordHash: 'jwt-session',
         name: decoded.name || 'Paciente',
         role: decoded.role || 'PATIENT',
@@ -56,7 +58,8 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     }
 
     if (decoded.role === 'PATIENT') {
-      const targetProfileId = decoded.profileId || 'pat-' + user.id;
+      const targetProfileId =
+        decoded.profileId || deriveDeterministicId('pat', user.email || user.id);
       let patient = await db.getPatientById(targetProfileId);
       if (!patient) {
         patient = await db.getPatientByUserId(user.id);

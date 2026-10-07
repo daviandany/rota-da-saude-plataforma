@@ -18,7 +18,9 @@ export function getCurrentFirebaseUid(fallbackUserId?: string): string {
   const fbUser = getAuth().currentUser;
   if (fbUser?.uid) return fbUser.uid;
   if (fallbackUserId) return fallbackUserId;
-  return localStorage.getItem('firebase_uid_hint') || 'u-patient-maria';
+  const savedUserId = localStorage.getItem('active_user_id');
+  if (savedUserId) return savedUserId;
+  return localStorage.getItem('firebase_uid_hint') || 'u-anonymous';
 }
 
 // =========================================================================
@@ -411,11 +413,13 @@ export async function saveClinicalAlertToSupabase(formData: {
 // =========================================================================
 
 export async function fetchBloodPressureFromSupabase(patientId?: string): Promise<BloodPressureRecord[]> {
-  if (!supabase) return [];
+  if (!supabase || !patientId) return [];
   try {
-    let query = supabase.from('blood_pressure_records').select('*').order('recorded_at', { ascending: false });
-    if (patientId) query = query.eq('patient_id', patientId);
-    const { data, error } = await query;
+    const { data, error } = await supabase
+      .from('blood_pressure_records')
+      .select('*')
+      .eq('patient_id', patientId)
+      .order('recorded_at', { ascending: false });
     if (error || !data) return [];
     return data.map((d: any) => ({
       id: d.id,
@@ -435,11 +439,13 @@ export async function fetchBloodPressureFromSupabase(patientId?: string): Promis
 }
 
 export async function fetchGlucoseFromSupabase(patientId?: string): Promise<GlucoseRecord[]> {
-  if (!supabase) return [];
+  if (!supabase || !patientId) return [];
   try {
-    let query = supabase.from('glucose_records').select('*').order('recorded_at', { ascending: false });
-    if (patientId) query = query.eq('patient_id', patientId);
-    const { data, error } = await query;
+    const { data, error } = await supabase
+      .from('glucose_records')
+      .select('*')
+      .eq('patient_id', patientId)
+      .order('recorded_at', { ascending: false });
     if (error || !data) return [];
     return data.map((d: any) => ({
       id: d.id,
@@ -458,11 +464,13 @@ export async function fetchGlucoseFromSupabase(patientId?: string): Promise<Gluc
 }
 
 export async function fetchMedicationsFromSupabase(patientId?: string): Promise<Medication[]> {
-  if (!supabase) return [];
+  if (!supabase || !patientId) return [];
   try {
-    let query = supabase.from('medications').select('*').order('created_at', { ascending: false });
-    if (patientId) query = query.eq('patient_id', patientId);
-    const { data, error } = await query;
+    const { data, error } = await supabase
+      .from('medications')
+      .select('*')
+      .eq('patient_id', patientId)
+      .order('created_at', { ascending: false });
     if (error || !data) return [];
     return data.map((d: any) => ({
       id: d.id,
@@ -480,8 +488,12 @@ export async function fetchMedicationsFromSupabase(patientId?: string): Promise<
   }
 }
 
-export async function fetchAppointmentsFromSupabase(patientId?: string): Promise<Appointment[]> {
+export async function fetchAppointmentsFromSupabase(
+  patientId?: string,
+  allowAllForDoctor: boolean = false
+): Promise<Appointment[]> {
   if (!supabase) return [];
+  if (!patientId && !allowAllForDoctor) return [];
   try {
     let query = supabase.from('appointments').select('*').order('scheduled_for', { ascending: true });
     if (patientId) query = query.eq('patient_id', patientId);

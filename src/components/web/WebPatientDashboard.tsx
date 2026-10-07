@@ -77,11 +77,12 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
   const fetchData = async () => {
     try {
       setLoading(true);
+      const currentPatientId = user?.profileId || user?.id;
       const [sum, hist, meds, appts] = await Promise.all([
-        api.getSummary(),
-        api.getHistory(undefined, timeframe),
-        api.getMedications(),
-        api.getAppointments(),
+        api.getSummary(currentPatientId),
+        api.getHistory(currentPatientId, timeframe),
+        api.getMedications(currentPatientId),
+        api.getAppointments(currentPatientId),
       ]);
 
       setSummary(sum);
@@ -98,7 +99,7 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
 
   useEffect(() => {
     fetchData();
-  }, [timeframe]);
+  }, [timeframe, user?.id, user?.profileId]);
 
   const handleDownloadPDF = async () => {
     try {

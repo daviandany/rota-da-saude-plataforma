@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useLayoutEffect } from 'react';
 import { User, UserRole } from '../types';
-import { api, apiClient, setAuthToken } from '../services/api';
+import { api, apiClient, setAuthToken, setActiveSessionUser } from '../services/api';
 import { signInWithGoogle, signOutFirebase, auth } from '../services/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { FirestoreClinicalService } from '../services/firestoreService';
@@ -39,12 +39,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Sincroniza o token do AuthContext com a instância do Axios
   useLayoutEffect(() => {
     setAuthToken(token);
+    setActiveSessionUser(user);
 
     const responseInterceptor = apiClient.interceptors.response.use(
       (response) => response,
       (error) => {
         if (error.response?.status === 401) {
           setAuthToken(null);
+          setActiveSessionUser(null);
           setToken(null);
           setUser(null);
         }
@@ -55,7 +57,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       apiClient.interceptors.response.eject(responseInterceptor);
     };
-  }, [token]);
+  }, [token, user]);
 
   const initAuth = async () => {
     const savedToken = localStorage.getItem('token');

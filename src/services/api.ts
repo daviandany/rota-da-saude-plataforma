@@ -28,7 +28,7 @@ import {
 
 const API_BASE = '/api';
 
-// Token armazenado e sincronizado com o AuthContext
+// Token e IDs do usuário autenticado sincronizados com o AuthContext
 let authContextToken: string | null = localStorage.getItem('token');
 
 export function setAuthToken(token: string | null) {
@@ -37,7 +37,33 @@ export function setAuthToken(token: string | null) {
     localStorage.setItem('token', token);
   } else {
     localStorage.removeItem('token');
+    localStorage.removeItem('active_user_id');
+    localStorage.removeItem('active_profile_id');
+    localStorage.removeItem('active_user_role');
   }
+}
+
+export function setActiveSessionUser(user: User | null) {
+  if (user) {
+    localStorage.setItem('active_user_id', user.id);
+    if (user.profileId) {
+      localStorage.setItem('active_profile_id', user.profileId);
+    }
+    localStorage.setItem('active_user_role', user.role);
+  } else {
+    localStorage.removeItem('active_user_id');
+    localStorage.removeItem('active_profile_id');
+    localStorage.removeItem('active_user_role');
+  }
+}
+
+export function getActivePatientId(explicitPatientId?: string): string | undefined {
+  if (explicitPatientId) return explicitPatientId;
+  const role = localStorage.getItem('active_user_role');
+  if (role === 'PATIENT') {
+    return localStorage.getItem('active_profile_id') || localStorage.getItem('active_user_id') || undefined;
+  }
+  return undefined;
 }
 
 export function getAuthToken(): string | null {
@@ -94,6 +120,9 @@ export const api = {
     if (data.token) {
       setAuthToken(data.token);
     }
+    if (data.user) {
+      setActiveSessionUser(data.user);
+    }
     return data;
   },
 
@@ -101,6 +130,9 @@ export const api = {
     const { data } = await apiClient.post('/auth/register', payload);
     if (data.token) {
       setAuthToken(data.token);
+    }
+    if (data.user) {
+      setActiveSessionUser(data.user);
     }
     return data;
   },
@@ -152,11 +184,17 @@ export const api = {
     if (data.token) {
       setAuthToken(data.token);
     }
+    if (data.user) {
+      setActiveSessionUser(data.user);
+    }
     return data;
   },
 
   async getMe(): Promise<User> {
     const { data } = await apiClient.get('/auth/me');
+    if (data.user) {
+      setActiveSessionUser(data.user);
+    }
     return data.user;
   },
 
@@ -172,8 +210,12 @@ export const api = {
     riskLevel?: string;
   }): Promise<{ success: boolean; user: User }> {
     const { data } = await apiClient.put('/auth/profile', payload);
+    if (data.user) {
+      setActiveSessionUser(data.user);
+    }
     try {
       await saveUserProfileToSupabase({
+        id: data.user.profileId,
         name: data.user.name,
         email: data.user.email,
         role: data.user.role,
@@ -195,8 +237,9 @@ export const api = {
 
   // Clinical (Patient)
   async getSummary(patientId?: string): Promise<PatientSummary> {
+    const resolvedPatientId = getActivePatientId(patientId);
     const { data } = await apiClient.get('/clinical/summary', {
-      params: patientId ? { patientId } : undefined,
+      params: resolvedPatientId ? { patientId: resolvedPatientId } : undefined,
     });
     return data.data;
   },
@@ -209,7 +252,11 @@ export const api = {
     recordedAt?: string;
     notes?: string;
   }): Promise<BloodPressureRecord> {
-    const { data } = await apiClient.post('/clinical/pressure', payload);
+    const resolvedPatientId = getActivePatientId(payload.patientId);
+    const { data } = await apiClient.post('/clinical/pressure', {
+      ...payload,
+      patientId: resolvedPatientId,
+    });
     const record = data.data;
 
     try {
@@ -221,7 +268,7 @@ export const api = {
         pulse: record.pulse,
         recordedAt: record.recordedAt,
         notes: record.notes,
-        fallbackUserId: record.patientId,
+        fallbackUserId: localStorage.getItem('active_user_id') || record.patientId,
       });
     } catch (e) {
       console.warn('[Supabase] Registro de pressão local mantido:', e);
@@ -243,7 +290,11 @@ export const api = {
     recordedAt?: string;
     notes?: string;
   }): Promise<GlucoseRecord> {
-    const { data } = await apiClient.post('/clinical/glucose', payload);
+    const resolvedPatientId = getActivePatientId(payload.patientId);
+    const { data } = await apiClient.post('/clinical/glucose', {
+      ...payload,
+      patientId: resolvedPatientId,
+    });
     const record = data.data;
 
     try {
@@ -254,7 +305,7 @@ export const api = {
         moment: record.moment,
         recordedAt: record.recordedAt,
         notes: record.notes,
-        fallbackUserId: record.patientId,
+        fallbackUserId: localStorage.getItem('active_user_id') || record.patientId,
       });
     } catch (e) {
       console.warn('[Supabase] Registro de glicemia local mantido:', e);
@@ -270,31 +321,38 @@ export const api = {
   },
 
   async getHistory(patientId?: string, timeframe: string = '7d'): Promise<any> {
+    const resolvedPatientId = getActivePatientId(patientId);
     const { data } = await apiClient.get('/clinical/history', {
-      params: { ...(patientId ? { patientId } : {}), timeframe },
+      params: { ...(resolvedPatientId ? { patientId: resolvedPatientId } : {}), timeframe },
     });
     const result = data.data;
 
     try {
-      const [supaBP, supaGlu] = await Promise.all([
-        fetchBloodPressureFromSupabase(patientId),
-        fetchGlucoseFromSupabase(patientId),
-      ]);
-      if (supaBP.length > 0) {
-        const bpMap = new Map<string, BloodPressureRecord>();
-        (result.pressureRecords || []).forEach((r: BloodPressureRecord) => bpMap.set(r.id, r));
-        supaBP.forEach((r) => bpMap.set(r.id, r));
-        result.pressureRecords = Array.from(bpMap.values()).sort(
-          (a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()
-        );
-      }
-      if (supaGlu.length > 0) {
-        const gluMap = new Map<string, GlucoseRecord>();
-        (result.glucoseRecords || []).forEach((g: GlucoseRecord) => gluMap.set(g.id, g));
-        supaGlu.forEach((g) => gluMap.set(g.id, g));
-        result.glucoseRecords = Array.from(gluMap.values()).sort(
-          (a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()
-        );
+      if (resolvedPatientId) {
+        const [supaBP, supaGlu] = await Promise.all([
+          fetchBloodPressureFromSupabase(resolvedPatientId),
+          fetchGlucoseFromSupabase(resolvedPatientId),
+        ]);
+        if (supaBP.length > 0) {
+          const bpMap = new Map<string, BloodPressureRecord>();
+          (result.pressureRecords || []).forEach((r: BloodPressureRecord) => bpMap.set(r.id, r));
+          supaBP
+            .filter((r) => r.patientId === resolvedPatientId)
+            .forEach((r) => bpMap.set(r.id, r));
+          result.pressureRecords = Array.from(bpMap.values()).sort(
+            (a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()
+          );
+        }
+        if (supaGlu.length > 0) {
+          const gluMap = new Map<string, GlucoseRecord>();
+          (result.glucoseRecords || []).forEach((g: GlucoseRecord) => gluMap.set(g.id, g));
+          supaGlu
+            .filter((g) => g.patientId === resolvedPatientId)
+            .forEach((g) => gluMap.set(g.id, g));
+          result.glucoseRecords = Array.from(gluMap.values()).sort(
+            (a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()
+          );
+        }
       }
     } catch {
       // Ignora caso Supabase ainda não possua as tabelas criadas
@@ -305,18 +363,23 @@ export const api = {
 
   // Medications
   async getMedications(patientId?: string): Promise<Medication[]> {
+    const resolvedPatientId = getActivePatientId(patientId);
     const { data } = await apiClient.get('/medications', {
-      params: patientId ? { patientId } : undefined,
+      params: resolvedPatientId ? { patientId: resolvedPatientId } : undefined,
     });
     let list: Medication[] = data.data || [];
 
     try {
-      const supaMeds = await fetchMedicationsFromSupabase(patientId);
-      if (supaMeds.length > 0) {
-        const map = new Map<string, Medication>();
-        list.forEach((m) => map.set(m.id, m));
-        supaMeds.forEach((m) => map.set(m.id, m));
-        list = Array.from(map.values());
+      if (resolvedPatientId) {
+        const supaMeds = await fetchMedicationsFromSupabase(resolvedPatientId);
+        if (supaMeds.length > 0) {
+          const map = new Map<string, Medication>();
+          list.forEach((m) => map.set(m.id, m));
+          supaMeds
+            .filter((m) => m.patientId === resolvedPatientId)
+            .forEach((m) => map.set(m.id, m));
+          list = Array.from(map.values());
+        }
       }
     } catch {
       // Ignora erro de leitura opcional
@@ -333,7 +396,11 @@ export const api = {
     reminderTimes: string[];
     notes?: string;
   }): Promise<Medication> {
-    const { data } = await apiClient.post('/medications', payload);
+    const resolvedPatientId = getActivePatientId(payload.patientId);
+    const { data } = await apiClient.post('/medications', {
+      ...payload,
+      patientId: resolvedPatientId,
+    });
     const med = data.data;
 
     try {
@@ -345,7 +412,7 @@ export const api = {
         frequency: med.frequency,
         reminderTimes: med.reminderTimes,
         notes: med.notes,
-        fallbackUserId: med.patientId,
+        fallbackUserId: localStorage.getItem('active_user_id') || med.patientId,
       });
     } catch (e) {
       console.warn('[Supabase] Registro de medicamento local mantido:', e);
@@ -374,17 +441,21 @@ export const api = {
 
   // Appointments
   async getAppointments(patientId?: string): Promise<Appointment[]> {
+    const resolvedPatientId = getActivePatientId(patientId);
+    const isDoctor = localStorage.getItem('active_user_role') === 'PROFESSIONAL';
     const { data } = await apiClient.get('/appointments', {
-      params: patientId ? { patientId } : undefined,
+      params: resolvedPatientId ? { patientId: resolvedPatientId } : undefined,
     });
     let list: Appointment[] = data.data || [];
 
     try {
-      const supaApps = await fetchAppointmentsFromSupabase(patientId);
+      const supaApps = await fetchAppointmentsFromSupabase(resolvedPatientId, isDoctor);
       if (supaApps.length > 0) {
         const map = new Map<string, Appointment>();
         list.forEach((a) => map.set(a.id, a));
-        supaApps.forEach((a) => map.set(a.id, a));
+        supaApps
+          .filter((a) => !resolvedPatientId || a.patientId === resolvedPatientId)
+          .forEach((a) => map.set(a.id, a));
         list = Array.from(map.values()).sort(
           (a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime()
         );
@@ -393,13 +464,15 @@ export const api = {
       // Ignora erro de leitura opcional
     }
 
-    if (FirestoreClinicalService.isAuthReady()) {
+    if (FirestoreClinicalService.isAuthReady() && (resolvedPatientId || isDoctor)) {
       try {
-        const fsApps = await FirestoreClinicalService.getAppointments(patientId);
+        const fsApps = await FirestoreClinicalService.getAppointments(resolvedPatientId);
         if (fsApps && fsApps.length > 0) {
           const map = new Map<string, Appointment>();
           list.forEach((a) => map.set(a.id, a));
-          fsApps.forEach((a) => map.set(a.id, a));
+          fsApps
+            .filter((a) => !resolvedPatientId || a.patientId === resolvedPatientId)
+            .forEach((a) => map.set(a.id, a));
           list = Array.from(map.values()).sort(
             (a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime()
           );
@@ -412,7 +485,11 @@ export const api = {
   },
 
   async createAppointment(payload: any): Promise<Appointment> {
-    const { data } = await apiClient.post('/appointments', payload);
+    const resolvedPatientId = getActivePatientId(payload.patientId);
+    const { data } = await apiClient.post('/appointments', {
+      ...payload,
+      patientId: resolvedPatientId || payload.patientId,
+    });
     const app = data.data;
 
     try {
@@ -427,7 +504,7 @@ export const api = {
         scheduledFor: app.scheduledFor,
         appointmentType: app.appointmentType,
         notes: app.notes,
-        fallbackUserId: app.patientId,
+        fallbackUserId: localStorage.getItem('active_user_id') || app.patientId,
       });
     } catch (e) {
       console.warn('[Supabase] Agendamento local mantido:', e);
