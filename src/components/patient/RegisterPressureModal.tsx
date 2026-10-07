@@ -85,19 +85,27 @@ export const RegisterPressureModal: React.FC<RegisterPressureModalProps> = ({
             <span className="text-xs font-medium text-slate-600 dark:text-slate-400 block mb-1">
               Pressão sistólica
             </span>
-            <div className="flex items-center justify-between">
-              <span className="text-2xl font-bold text-slate-800 dark:text-white">{systolic}</span>
+            <div className="flex items-center justify-between gap-3">
+              <input
+                type="number"
+                min={50}
+                max={300}
+                value={systolic || ''}
+                onChange={(e) => setSystolic(e.target.value === '' ? 0 : Number(e.target.value))}
+                placeholder="120"
+                className="w-28 text-2xl font-bold text-slate-800 dark:text-white bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1 focus:outline-hidden focus:ring-2 focus:ring-teal-600"
+              />
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setSystolic((v) => Math.max(70, v - 1))}
+                  onClick={() => setSystolic((v) => Math.max(50, (v || 120) - 1))}
                   className="w-8 h-8 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-200 font-bold flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-600 shadow-xs"
                 >
                   <Minus className="w-4 h-4" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSystolic((v) => Math.min(260, v + 1))}
+                  onClick={() => setSystolic((v) => Math.min(300, (v || 120) + 1))}
                   className="w-8 h-8 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-200 font-bold flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-600 shadow-xs"
                 >
                   <Plus className="w-4 h-4" />
@@ -111,19 +119,27 @@ export const RegisterPressureModal: React.FC<RegisterPressureModalProps> = ({
             <span className="text-xs font-medium text-slate-600 dark:text-slate-400 block mb-1">
               Pressão diastólica
             </span>
-            <div className="flex items-center justify-between">
-              <span className="text-2xl font-bold text-slate-800 dark:text-white">{diastolic}</span>
+            <div className="flex items-center justify-between gap-3">
+              <input
+                type="number"
+                min={30}
+                max={200}
+                value={diastolic || ''}
+                onChange={(e) => setDiastolic(e.target.value === '' ? 0 : Number(e.target.value))}
+                placeholder="80"
+                className="w-28 text-2xl font-bold text-slate-800 dark:text-white bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1 focus:outline-hidden focus:ring-2 focus:ring-teal-600"
+              />
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setDiastolic((v) => Math.max(40, v - 1))}
+                  onClick={() => setDiastolic((v) => Math.max(30, (v || 80) - 1))}
                   className="w-8 h-8 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-200 font-bold flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-600 shadow-xs"
                 >
                   <Minus className="w-4 h-4" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => setDiastolic((v) => Math.min(160, v + 1))}
+                  onClick={() => setDiastolic((v) => Math.min(200, (v || 80) + 1))}
                   className="w-8 h-8 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-200 font-bold flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-600 shadow-xs"
                 >
                   <Plus className="w-4 h-4" />
@@ -137,19 +153,27 @@ export const RegisterPressureModal: React.FC<RegisterPressureModalProps> = ({
             <span className="text-xs font-medium text-slate-600 dark:text-slate-400 block mb-1">
               Batimentos (bpm)
             </span>
-            <div className="flex items-center justify-between">
-              <span className="text-2xl font-bold text-slate-800 dark:text-white">{pulse}</span>
+            <div className="flex items-center justify-between gap-3">
+              <input
+                type="number"
+                min={30}
+                max={240}
+                value={pulse || ''}
+                onChange={(e) => setPulse(e.target.value === '' ? 0 : Number(e.target.value))}
+                placeholder="72"
+                className="w-28 text-2xl font-bold text-slate-800 dark:text-white bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1 focus:outline-hidden focus:ring-2 focus:ring-teal-600"
+              />
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setPulse((v) => Math.max(40, v - 1))}
+                  onClick={() => setPulse((v) => Math.max(30, (v || 72) - 1))}
                   className="w-8 h-8 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-200 font-bold flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-600 shadow-xs"
                 >
                   <Minus className="w-4 h-4" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPulse((v) => Math.min(220, v + 1))}
+                  onClick={() => setPulse((v) => Math.min(240, (v || 72) + 1))}
                   className="w-8 h-8 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-200 font-bold flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-600 shadow-xs"
                 >
                   <Plus className="w-4 h-4" />

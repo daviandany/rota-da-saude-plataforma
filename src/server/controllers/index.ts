@@ -269,7 +269,8 @@ export const medicationController = {
         req.body.patientId || req.user?.profileId,
         req.user
       );
-      const { name, dosage, frequency, reminderTimes, notes } = req.body;
+      const { name, dosage, frequency, reminderTimes, notes, addedByRole, prescribedBy } = req.body;
+      const role = req.user?.role || addedByRole || 'PATIENT';
       const med = await MedicationService.add({
         patientId: patient.id,
         name,
@@ -277,8 +278,46 @@ export const medicationController = {
         frequency,
         reminderTimes: reminderTimes || ['08:00'],
         notes,
+        addedByRole: role,
+        prescribedBy: prescribedBy || (role === 'PROFESSIONAL' ? 'Médico da Equipe ESF' : 'Paciente'),
       });
       return res.status(201).json({ success: true, data: med });
+    } catch (err: any) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  },
+
+  async updateMedication(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const patient = await ClinicalService.ensurePatient(
+        req.body.patientId || req.user?.profileId,
+        req.user
+      );
+      const existingMeds = await MedicationService.getByPatient(patient.id);
+      const targetMed = existingMeds.find((m) => m.id === id);
+
+      if (targetMed && req.user?.role === 'PATIENT' && targetMed.addedByRole === 'PROFESSIONAL') {
+        return res.status(403).json({
+          success: false,
+          error: 'Medicamentos prescritos pelo médico não podem ser editados pelo paciente.',
+        });
+      }
+
+      const { name, dosage, frequency, reminderTimes, notes, status } = req.body;
+      const updated = await MedicationService.update(
+        id,
+        {
+          name,
+          dosage,
+          frequency,
+          reminderTimes,
+          notes,
+          status,
+        },
+        req.user?.role
+      );
+      return res.json({ success: true, data: updated });
     } catch (err: any) {
       return res.status(400).json({ success: false, error: err.message });
     }

@@ -229,6 +229,7 @@ export async function saveMedicationToSupabase(formData: {
   frequency: string;
   reminderTimes: string[];
   notes?: string;
+  addedByRole?: string;
   fallbackUserId?: string;
 }) {
   try {

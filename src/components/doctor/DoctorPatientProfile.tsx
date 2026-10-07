@@ -52,6 +52,31 @@ export const DoctorPatientProfile: React.FC<DoctorPatientProfileProps> = ({
   const appointments: Appointment[] = profile?.appointments || [];
   const bpRecords: BloodPressureRecord[] = profile?.historyBP || [];
 
+  const sortedBP = [...bpRecords]
+    .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime())
+    .slice(-8);
+
+  const chartWidth = 280;
+  const chartHeight = 100;
+  const getDocX = (idx: number, total: number) => {
+    if (total <= 1) return chartWidth / 2;
+    return 16 + (idx / (total - 1)) * (chartWidth - 32);
+  };
+  const getDocY = (val: number) => {
+    const min = 50;
+    const max = 190;
+    const clamped = Math.max(min, Math.min(max, val));
+    return chartHeight - 12 - ((clamped - min) / (max - min)) * (chartHeight - 24);
+  };
+  const docSysPath =
+    sortedBP.length === 1
+      ? `M ${chartWidth / 2 - 25} ${getDocY(sortedBP[0].systolic)} L ${chartWidth / 2 + 25} ${getDocY(sortedBP[0].systolic)}`
+      : sortedBP.map((r, i) => `${i === 0 ? 'M' : 'L'} ${getDocX(i, sortedBP.length)} ${getDocY(r.systolic)}`).join(' ');
+  const docDiaPath =
+    sortedBP.length === 1
+      ? `M ${chartWidth / 2 - 25} ${getDocY(sortedBP[0].diastolic)} L ${chartWidth / 2 + 25} ${getDocY(sortedBP[0].diastolic)}`
+      : sortedBP.map((r, i) => `${i === 0 ? 'M' : 'L'} ${getDocX(i, sortedBP.length)} ${getDocY(r.diastolic)}`).join(' ');
+
   return (
     <div className="flex flex-col min-h-full bg-slate-50/70 dark:bg-slate-950 pb-12 transition-colors">
       {/* Top Header */}
@@ -145,11 +170,20 @@ export const DoctorPatientProfile: React.FC<DoctorPatientProfileProps> = ({
                   Pressão arterial
                 </span>
                 <div className="text-xl font-black text-slate-900 dark:text-white">
-                  {latestBP ? `${latestBP.systolic} / ${latestBP.diastolic}` : '120 / 80'}
+                  {latestBP ? `${latestBP.systolic} / ${latestBP.diastolic}` : 'Sem registro'}
                 </div>
                 <div className="text-[10px] text-slate-400 font-mono">mmHg</div>
                 <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-2">Última medição</div>
-                <div className="text-[10px] font-bold text-slate-700 dark:text-slate-300">07/05 às 08:30</div>
+                <div className="text-[10px] font-bold text-slate-700 dark:text-slate-300">
+                  {latestBP?.recordedAt
+                    ? new Date(latestBP.recordedAt).toLocaleString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : '—'}
+                </div>
               </div>
 
               <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/80 dark:border-slate-800 shadow-xs">
@@ -157,18 +191,27 @@ export const DoctorPatientProfile: React.FC<DoctorPatientProfileProps> = ({
                   Glicemia
                 </span>
                 <div className="text-xl font-black text-slate-900 dark:text-white">
-                  {latestGlucose ? latestGlucose.glucoseValue : '98'}
+                  {latestGlucose ? latestGlucose.glucoseValue : 'Sem registro'}
                 </div>
                 <div className="text-[10px] text-slate-400 font-mono">mg/dL</div>
                 <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-2">Última medição</div>
-                <div className="text-[10px] font-bold text-slate-700 dark:text-slate-300">07/05 às 08:30</div>
+                <div className="text-[10px] font-bold text-slate-700 dark:text-slate-300">
+                  {latestGlucose?.recordedAt
+                    ? new Date(latestGlucose.recordedAt).toLocaleString('pt-BR', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })
+                    : '—'}
+                </div>
               </div>
             </div>
 
             {/* Evolução */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
               <div className="flex items-center justify-between text-xs">
-                <span className="font-semibold text-slate-800 dark:text-white">Evolução (últimos 30 dias)</span>
+                <span className="font-semibold text-slate-800 dark:text-white">Evolução Real ({sortedBP.length} registros)</span>
                 <div className="flex items-center gap-2 text-[10px] font-bold">
                   <span className="flex items-center gap-1 text-sky-600 dark:text-sky-400">
                     <span className="w-2 h-2 rounded-full bg-sky-500"></span> Sistólica
@@ -180,47 +223,49 @@ export const DoctorPatientProfile: React.FC<DoctorPatientProfileProps> = ({
               </div>
 
               {/* Chart */}
-              <div className="h-28 flex items-center justify-center relative">
-                <svg viewBox="0 0 280 100" className="w-full h-28 overflow-visible">
-                  <line x1="0" y1="20" x2="280" y2="20" stroke="currentColor" className="text-slate-100 dark:text-slate-800" strokeDasharray="3 3" />
-                  <line x1="0" y1="50" x2="280" y2="50" stroke="currentColor" className="text-slate-100 dark:text-slate-800" strokeDasharray="3 3" />
-                  <line x1="0" y1="80" x2="280" y2="80" stroke="currentColor" className="text-slate-100 dark:text-slate-800" strokeDasharray="3 3" />
+              {sortedBP.length === 0 ? (
+                <div className="h-28 flex items-center justify-center text-xs text-slate-400">
+                  Nenhuma aferição registrada para este paciente.
+                </div>
+              ) : (
+                <>
+                  <div className="h-28 flex items-center justify-center relative">
+                    <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-28 overflow-visible">
+                      <line x1="0" y1="20" x2="280" y2="20" stroke="currentColor" className="text-slate-100 dark:text-slate-800" strokeDasharray="3 3" />
+                      <line x1="0" y1="50" x2="280" y2="50" stroke="currentColor" className="text-slate-100 dark:text-slate-800" strokeDasharray="3 3" />
+                      <line x1="0" y1="80" x2="280" y2="80" stroke="currentColor" className="text-slate-100 dark:text-slate-800" strokeDasharray="3 3" />
 
-                  <path
-                    d="M 10 40 Q 60 25 100 45 T 180 35 T 270 30"
-                    fill="none"
-                    stroke="#0284c7"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                  />
-                  <circle cx="10" cy="40" r="3.5" fill="#0284c7" />
-                  <circle cx="80" cy="30" r="3.5" fill="#0284c7" />
-                  <circle cx="150" cy="42" r="3.5" fill="#0284c7" />
-                  <circle cx="210" cy="32" r="3.5" fill="#0284c7" />
-                  <circle cx="270" cy="30" r="3.5" fill="#0284c7" />
+                      <path d={docSysPath} fill="none" stroke="#0284c7" strokeWidth="2.5" strokeLinecap="round" />
+                      {sortedBP.map((r, i) => (
+                        <g key={r.id || 's-' + i}>
+                          <circle cx={getDocX(i, sortedBP.length)} cy={getDocY(r.systolic)} r="3.5" fill="#0284c7" />
+                          <text x={getDocX(i, sortedBP.length)} y={getDocY(r.systolic) - 5} textAnchor="middle" className="fill-sky-600 dark:fill-sky-400 text-[8px] font-bold">
+                            {r.systolic}
+                          </text>
+                        </g>
+                      ))}
 
-                  <path
-                    d="M 10 75 Q 60 70 100 78 T 180 72 T 270 70"
-                    fill="none"
-                    stroke="#10b981"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                  />
-                  <circle cx="10" cy="75" r="3.5" fill="#10b981" />
-                  <circle cx="80" cy="71" r="3.5" fill="#10b981" />
-                  <circle cx="150" cy="78" r="3.5" fill="#10b981" />
-                  <circle cx="210" cy="73" r="3.5" fill="#10b981" />
-                  <circle cx="270" cy="70" r="3.5" fill="#10b981" />
-                </svg>
-              </div>
+                      <path d={docDiaPath} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" />
+                      {sortedBP.map((r, i) => (
+                        <g key={r.id ? r.id + '-d' : 'd-' + i}>
+                          <circle cx={getDocX(i, sortedBP.length)} cy={getDocY(r.diastolic)} r="3.5" fill="#10b981" />
+                          <text x={getDocX(i, sortedBP.length)} y={getDocY(r.diastolic) + 10} textAnchor="middle" className="fill-emerald-600 dark:fill-emerald-400 text-[8px] font-bold">
+                            {r.diastolic}
+                          </text>
+                        </g>
+                      ))}
+                    </svg>
+                  </div>
 
-              <div className="flex justify-between text-[10px] text-slate-400 font-mono px-1">
-                <span>07/04</span>
-                <span>14/04</span>
-                <span>21/04</span>
-                <span>28/04</span>
-                <span>05/05</span>
-              </div>
+                  <div className="flex justify-between text-[10px] text-slate-400 font-mono px-1">
+                    {sortedBP.map((r, idx) => (
+                      <span key={r.id || idx}>
+                        {new Date(r.recordedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                      </span>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Quick Action buttons */}

@@ -89,19 +89,27 @@ export const RegisterGlucoseModal: React.FC<RegisterGlucoseModalProps> = ({
             <span className="text-xs font-medium text-slate-600 dark:text-slate-400 block mb-1">
               Valor de glicose (mg/dL)
             </span>
-            <div className="flex items-center justify-between">
-              <span className="text-3xl font-extrabold text-slate-800 dark:text-white">{glucoseValue}</span>
+            <div className="flex items-center justify-between gap-3">
+              <input
+                type="number"
+                min={20}
+                max={600}
+                value={glucoseValue || ''}
+                onChange={(e) => setGlucoseValue(e.target.value === '' ? 0 : Number(e.target.value))}
+                placeholder="98"
+                className="w-32 text-3xl font-extrabold text-slate-800 dark:text-white bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1 focus:outline-hidden focus:ring-2 focus:ring-teal-600"
+              />
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setGlucoseValue((v) => Math.max(30, v - 1))}
+                  onClick={() => setGlucoseValue((v) => Math.max(20, (v || 98) - 1))}
                   className="w-9 h-9 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-600 shadow-xs"
                 >
                   <Minus className="w-4 h-4" />
                 </button>
                 <button
                   type="button"
-                  onClick={() => setGlucoseValue((v) => Math.min(500, v + 1))}
+                  onClick={() => setGlucoseValue((v) => Math.min(600, (v || 98) + 1))}
                   className="w-9 h-9 rounded-lg bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-bold flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-600 shadow-xs"
                 >
                   <Plus className="w-4 h-4" />

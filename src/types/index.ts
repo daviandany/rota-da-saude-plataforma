@@ -82,6 +82,8 @@ export interface Medication {
   reminderTimes: string[];
   status: 'ATIVO' | 'SUSPENSO' | 'CONCLUIDO';
   notes?: string;
+  addedByRole?: UserRole;
+  prescribedBy?: string;
 }
 
 export interface Appointment {

@@ -377,7 +377,14 @@ export const api = {
           list.forEach((m) => map.set(m.id, m));
           supaMeds
             .filter((m) => m.patientId === resolvedPatientId)
-            .forEach((m) => map.set(m.id, m));
+            .forEach((m) => {
+              const existing = map.get(m.id);
+              map.set(m.id, {
+                ...m,
+                addedByRole: existing?.addedByRole || m.addedByRole || 'PATIENT',
+                prescribedBy: existing?.prescribedBy || m.prescribedBy,
+              });
+            });
           list = Array.from(map.values());
         }
       }
@@ -395,9 +402,56 @@ export const api = {
     frequency: string;
     reminderTimes: string[];
     notes?: string;
+    addedByRole?: string;
   }): Promise<Medication> {
     const resolvedPatientId = getActivePatientId(payload.patientId);
+    const activeRole = localStorage.getItem('active_user_role') || payload.addedByRole || 'PATIENT';
     const { data } = await apiClient.post('/medications', {
+      ...payload,
+      patientId: resolvedPatientId,
+      addedByRole: activeRole,
+    });
+    const med = data.data;
+
+    try {
+      await saveMedicationToSupabase({
+        id: med.id,
+        patientId: med.patientId,
+        name: med.name,
+        dosage: med.dosage,
+        frequency: med.frequency,
+        reminderTimes: med.reminderTimes,
+        notes: med.notes,
+        addedByRole: med.addedByRole || activeRole,
+        fallbackUserId: localStorage.getItem('active_user_id') || med.patientId,
+      });
+    } catch (e) {
+      console.warn('[Supabase] Registro de medicamento local mantido:', e);
+    }
+
+    try {
+      await FirestoreClinicalService.addMedication(med);
+    } catch (e) {
+      console.warn('[Firestore] Registro local mantido, erro no Firestore:', e);
+    }
+
+    return med;
+  },
+
+  async updateMedication(
+    id: string,
+    payload: {
+      patientId?: string;
+      name: string;
+      dosage: string;
+      frequency: string;
+      reminderTimes: string[];
+      notes?: string;
+      status?: 'ATIVO' | 'SUSPENSO' | 'CONCLUIDO';
+    }
+  ): Promise<Medication> {
+    const resolvedPatientId = getActivePatientId(payload.patientId);
+    const { data } = await apiClient.put(`/medications/${id}`, {
       ...payload,
       patientId: resolvedPatientId,
     });
@@ -412,16 +466,11 @@ export const api = {
         frequency: med.frequency,
         reminderTimes: med.reminderTimes,
         notes: med.notes,
+        addedByRole: med.addedByRole || 'PATIENT',
         fallbackUserId: localStorage.getItem('active_user_id') || med.patientId,
       });
     } catch (e) {
-      console.warn('[Supabase] Registro de medicamento local mantido:', e);
-    }
-
-    try {
-      await FirestoreClinicalService.addMedication(med);
-    } catch (e) {
-      console.warn('[Firestore] Registro local mantido, erro no Firestore:', e);
+      console.warn('[Supabase] Atualização de medicamento local mantida:', e);
     }
 
     return med;

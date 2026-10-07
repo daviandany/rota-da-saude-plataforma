@@ -32,42 +32,45 @@ export const PatientHistory: React.FC<PatientHistoryProps> = ({ onBack }) => {
   const bpRecords: BloodPressureRecord[] = historyData?.pressureRecords || [];
   const glucoseRecords: GlucoseRecord[] = historyData?.glucoseRecords || [];
 
-  // SVG Chart Calculation
-  const chartPoints = [
-    { date: '01/05', sys: 120, dia: 78, gluc: 95 },
-    { date: '02/05', sys: 121, dia: 80, gluc: 104 },
-    { date: '03/05', sys: 119, dia: 79, gluc: 98 },
-    { date: '04/05', sys: 125, dia: 83, gluc: 110 },
-    { date: '05/05', sys: 122, dia: 82, gluc: 102 },
-    { date: '06/05', sys: 118, dia: 78, gluc: 128 },
-    { date: '07/05', sys: 120, dia: 80, gluc: 98 },
-  ];
+  // Dynamic SVG Chart Calculation from real created records
+  const sortedBP = [...bpRecords]
+    .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime())
+    .slice(-8);
+  const sortedGluc = [...glucoseRecords]
+    .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime())
+    .slice(-8);
+
+  const activeRecordsCount = metricTab === 'pressure' ? sortedBP.length : sortedGluc.length;
 
   const chartHeight = 120;
   const chartWidth = 280;
-  const maxVal = metricTab === 'pressure' ? 180 : 200;
-  const minVal = metricTab === 'pressure' ? 40 : 50;
+  const maxVal = metricTab === 'pressure' ? 190 : 240;
+  const minVal = metricTab === 'pressure' ? 50 : 50;
 
   const getY = (val: number) => {
     const clamped = Math.max(minVal, Math.min(maxVal, val));
-    return chartHeight - ((clamped - minVal) / (maxVal - minVal)) * chartHeight;
+    return chartHeight - 12 - ((clamped - minVal) / (maxVal - minVal)) * (chartHeight - 24);
   };
 
-  const getX = (index: number) => {
-    return (index / (chartPoints.length - 1)) * (chartWidth - 20) + 10;
+  const getX = (index: number, total: number) => {
+    if (total <= 1) return chartWidth / 2;
+    return (index / (total - 1)) * (chartWidth - 36) + 18;
   };
 
-  const sysPath = chartPoints
-    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(p.sys)}`)
-    .join(' ');
+  const sysPath =
+    sortedBP.length === 1
+      ? `M ${chartWidth / 2 - 25} ${getY(sortedBP[0].systolic)} L ${chartWidth / 2 + 25} ${getY(sortedBP[0].systolic)}`
+      : sortedBP.map((p, i) => `${i === 0 ? 'M' : 'L'} ${getX(i, sortedBP.length)} ${getY(p.systolic)}`).join(' ');
 
-  const diaPath = chartPoints
-    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(p.dia)}`)
-    .join(' ');
+  const diaPath =
+    sortedBP.length === 1
+      ? `M ${chartWidth / 2 - 25} ${getY(sortedBP[0].diastolic)} L ${chartWidth / 2 + 25} ${getY(sortedBP[0].diastolic)}`
+      : sortedBP.map((p, i) => `${i === 0 ? 'M' : 'L'} ${getX(i, sortedBP.length)} ${getY(p.diastolic)}`).join(' ');
 
-  const glucPath = chartPoints
-    .map((p, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(p.gluc)}`)
-    .join(' ');
+  const glucPath =
+    sortedGluc.length === 1
+      ? `M ${chartWidth / 2 - 25} ${getY(sortedGluc[0].glucoseValue)} L ${chartWidth / 2 + 25} ${getY(sortedGluc[0].glucoseValue)}`
+      : sortedGluc.map((p, i) => `${i === 0 ? 'M' : 'L'} ${getX(i, sortedGluc.length)} ${getY(p.glucoseValue)}`).join(' ');
 
   return (
     <div className="flex flex-col min-h-full bg-slate-50/70 dark:bg-slate-950 pb-12 transition-colors">
@@ -168,40 +171,64 @@ export const PatientHistory: React.FC<PatientHistoryProps> = ({ onBack }) => {
 
             {/* SVG area */}
             <div className="flex-1 overflow-hidden">
-              <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-[120px] overflow-visible">
-                {/* Horizontal grid lines */}
-                <line x1="0" y1={getY(160)} x2={chartWidth} y2={getY(160)} stroke="currentColor" className="text-slate-200 dark:text-slate-800" strokeDasharray="3 3" />
-                <line x1="0" y1={getY(120)} x2={chartWidth} y2={getY(120)} stroke="currentColor" className="text-slate-200 dark:text-slate-800" strokeDasharray="3 3" />
-                <line x1="0" y1={getY(80)} x2={chartWidth} y2={getY(80)} stroke="currentColor" className="text-slate-200 dark:text-slate-800" strokeDasharray="3 3" />
-                <line x1="0" y1={getY(40)} x2={chartWidth} y2={getY(40)} stroke="currentColor" className="text-slate-200 dark:text-slate-800" strokeDasharray="3 3" />
+              {activeRecordsCount === 0 ? (
+                <div className="h-[120px] flex items-center justify-center text-xs text-slate-400">
+                  Nenhum registro encontrado no período
+                </div>
+              ) : (
+                <>
+                  <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full h-[120px] overflow-visible">
+                    {/* Horizontal grid lines */}
+                    <line x1="0" y1={getY(160)} x2={chartWidth} y2={getY(160)} stroke="currentColor" className="text-slate-200 dark:text-slate-800" strokeDasharray="3 3" />
+                    <line x1="0" y1={getY(120)} x2={chartWidth} y2={getY(120)} stroke="currentColor" className="text-slate-200 dark:text-slate-800" strokeDasharray="3 3" />
+                    <line x1="0" y1={getY(80)} x2={chartWidth} y2={getY(80)} stroke="currentColor" className="text-slate-200 dark:text-slate-800" strokeDasharray="3 3" />
 
-                {metricTab === 'pressure' ? (
-                  <>
-                    <path d={sysPath} fill="none" stroke="#0284c7" strokeWidth="2.5" strokeLinecap="round" />
-                    {chartPoints.map((p, i) => (
-                      <circle key={'sys' + i} cx={getX(i)} cy={getY(p.sys)} r="3.5" fill="#0284c7" stroke="#fff" strokeWidth="1.5" />
-                    ))}
-                    <path d={diaPath} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" />
-                    {chartPoints.map((p, i) => (
-                      <circle key={'dia' + i} cx={getX(i)} cy={getY(p.dia)} r="3.5" fill="#10b981" stroke="#fff" strokeWidth="1.5" />
-                    ))}
-                  </>
-                ) : (
-                  <>
-                    <path d={glucPath} fill="none" stroke="#0d9488" strokeWidth="2.5" strokeLinecap="round" />
-                    {chartPoints.map((p, i) => (
-                      <circle key={'glu' + i} cx={getX(i)} cy={getY(p.gluc)} r="3.5" fill="#0d9488" stroke="#fff" strokeWidth="1.5" />
-                    ))}
-                  </>
-                )}
-              </svg>
+                    {metricTab === 'pressure' ? (
+                      <>
+                        <path d={sysPath} fill="none" stroke="#0284c7" strokeWidth="2.5" strokeLinecap="round" />
+                        {sortedBP.map((p, i) => (
+                          <g key={p.id || 'sys' + i}>
+                            <circle cx={getX(i, sortedBP.length)} cy={getY(p.systolic)} r="4" fill="#0284c7" stroke="#fff" strokeWidth="1.5" />
+                            <text x={getX(i, sortedBP.length)} y={getY(p.systolic) - 6} textAnchor="middle" className="fill-sky-600 dark:fill-sky-400 text-[8px] font-bold">
+                              {p.systolic}
+                            </text>
+                          </g>
+                        ))}
+                        <path d={diaPath} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" />
+                        {sortedBP.map((p, i) => (
+                          <g key={p.id ? p.id + '-dia' : 'dia' + i}>
+                            <circle cx={getX(i, sortedBP.length)} cy={getY(p.diastolic)} r="4" fill="#10b981" stroke="#fff" strokeWidth="1.5" />
+                            <text x={getX(i, sortedBP.length)} y={getY(p.diastolic) + 11} textAnchor="middle" className="fill-emerald-600 dark:fill-emerald-400 text-[8px] font-bold">
+                              {p.diastolic}
+                            </text>
+                          </g>
+                        ))}
+                      </>
+                    ) : (
+                      <>
+                        <path d={glucPath} fill="none" stroke="#0d9488" strokeWidth="2.5" strokeLinecap="round" />
+                        {sortedGluc.map((p, i) => (
+                          <g key={p.id || 'glu' + i}>
+                            <circle cx={getX(i, sortedGluc.length)} cy={getY(p.glucoseValue)} r="4" fill="#0d9488" stroke="#fff" strokeWidth="1.5" />
+                            <text x={getX(i, sortedGluc.length)} y={getY(p.glucoseValue) - 6} textAnchor="middle" className="fill-teal-600 dark:fill-teal-400 text-[8px] font-bold">
+                              {p.glucoseValue}
+                            </text>
+                          </g>
+                        ))}
+                      </>
+                    )}
+                  </svg>
 
-              {/* X Axis dates */}
-              <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-2 px-1">
-                {chartPoints.map((p) => (
-                  <span key={p.date}>{p.date}</span>
-                ))}
-              </div>
+                  {/* X Axis dates */}
+                  <div className="flex justify-between text-[10px] text-slate-400 dark:text-slate-500 font-mono mt-2 px-1">
+                    {(metricTab === 'pressure' ? sortedBP : sortedGluc).map((p, idx) => {
+                      const d = new Date(p.recordedAt);
+                      const label = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+                      return <span key={p.id || idx}>{label}</span>;
+                    })}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

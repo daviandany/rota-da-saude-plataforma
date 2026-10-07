@@ -9,6 +9,7 @@ import { NotificationProvider } from './context/NotificationContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { NotificationCenterModal } from './components/common/NotificationCenterModal';
 import { NotificationToast } from './components/common/NotificationToast';
+import { Medication } from './types';
 
 // Unified Responsive Layout & Screens
 import { WebLayout } from './components/web/WebLayout';
@@ -37,6 +38,7 @@ const MainApp: React.FC = () => {
   const [isPressureModalOpen, setIsPressureModalOpen] = useState(false);
   const [isGlucoseModalOpen, setIsGlucoseModalOpen] = useState(false);
   const [isAddMedModalOpen, setIsAddMedModalOpen] = useState(false);
+  const [editingMedication, setEditingMedication] = useState<Medication | null>(null);
   const [isSymptomModalOpen, setIsSymptomModalOpen] = useState(false);
   const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState(false);
   const [isScheduleAppointmentOpen, setIsScheduleAppointmentOpen] = useState(false);
@@ -101,7 +103,15 @@ const MainApp: React.FC = () => {
             key={refreshTrigger}
             onOpenPressureModal={() => setIsPressureModalOpen(true)}
             onOpenGlucoseModal={() => setIsGlucoseModalOpen(true)}
-            onOpenAddMedication={() => setIsAddMedModalOpen(true)}
+            onOpenAddMedication={() => {
+              setEditingMedication(null);
+              setIsAddMedModalOpen(true);
+            }}
+            onEditMedication={(med) => {
+              if (med.addedByRole === 'PROFESSIONAL') return;
+              setEditingMedication(med);
+              setIsAddMedModalOpen(true);
+            }}
             onOpenNotificationCenter={() => setIsNotificationModalOpen(true)}
             onOpenSymptomModal={() => setIsSymptomModalOpen(true)}
             onOpenEmergencyModal={() => setIsEmergencyModalOpen(true)}
@@ -112,6 +122,7 @@ const MainApp: React.FC = () => {
             key={refreshTrigger}
             onOpenNewAppointment={() => setIsNewAppointmentOpen(true)}
             onOpenAddMedication={(pId) => {
+              setEditingMedication(null);
               setSelectedPatientId(pId || null);
               setIsAddMedModalOpen(true);
             }}
@@ -164,9 +175,13 @@ const MainApp: React.FC = () => {
       />
       <AddMedicationModal
         isOpen={isAddMedModalOpen}
-        onClose={() => setIsAddMedModalOpen(false)}
+        onClose={() => {
+          setIsAddMedModalOpen(false);
+          setEditingMedication(null);
+        }}
         onSuccess={triggerRefresh}
         patientId={selectedPatientId || user.profileId || user.id}
+        medicationToEdit={editingMedication}
       />
 
       {/* Modais Clínicos do Profissional / Médico */}

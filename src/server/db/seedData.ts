@@ -350,6 +350,8 @@ export const initialMedications: Medication[] = [
     reminderTimes: ['08:00'],
     status: 'ATIVO',
     notes: 'Tomar pela manhã com água.',
+    addedByRole: 'PROFESSIONAL',
+    prescribedBy: 'Dr. Carlos Mendes',
     createdAt: '2025-01-01T08:00:00.000Z',
   },
   {
@@ -361,6 +363,8 @@ export const initialMedications: Medication[] = [
     reminderTimes: ['08:00'],
     status: 'ATIVO',
     notes: 'Diurético matinal.',
+    addedByRole: 'PROFESSIONAL',
+    prescribedBy: 'Dr. Carlos Mendes',
     createdAt: '2025-01-01T08:00:00.000Z',
   },
   {
@@ -372,6 +376,8 @@ export const initialMedications: Medication[] = [
     reminderTimes: ['08:00', '20:00'],
     status: 'ATIVO',
     notes: 'Tomar junto com as refeições.',
+    addedByRole: 'PROFESSIONAL',
+    prescribedBy: 'Dr. Carlos Mendes',
     createdAt: '2025-01-01T08:00:00.000Z',
   },
 ];

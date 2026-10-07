@@ -28,7 +28,7 @@ import {
   Building,
 } from 'lucide-react';
 import { api } from '../../services/api';
-import { Patient, ClinicalAlert, Appointment, Medication } from '../../types';
+import { Patient, ClinicalAlert, Appointment, Medication, BloodPressureRecord } from '../../types';
 import { useNotifications } from '../../context/NotificationContext';
 
 interface WebDoctorDashboardProps {
@@ -362,28 +362,103 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
           {/* Dossier Content Grid: 2 columns */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-8 space-y-6">
-              <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-800">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-3">
-                  Aferições Recentes no Prontuário
+              <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-800 space-y-4">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                  Aferições Recentes & Curva Clínica no Prontuário
                 </h4>
-                <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="grid grid-cols-2 gap-3">
                   <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
                     <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Última PA Registrada</span>
                     <div className="text-lg font-black text-slate-900 dark:text-white mt-0.5">
-                      {selectedPatient.latestPressure?.value || '120/80'} mmHg
+                      {selectedPatient.latestBP
+                        ? `${selectedPatient.latestBP.systolic}/${selectedPatient.latestBP.diastolic} mmHg`
+                        : selectedPatient.latestPressure?.value
+                        ? `${selectedPatient.latestPressure.value} mmHg`
+                        : 'Sem registro'}
                     </div>
                   </div>
                   <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
                     <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Última Glicemia</span>
                     <div className="text-lg font-black text-slate-900 dark:text-white mt-0.5">
-                      {selectedPatient.latestGlucose?.value || '108'} mg/dL
+                      {selectedPatient.latestGlucose?.glucoseValue
+                        ? `${selectedPatient.latestGlucose.glucoseValue} mg/dL`
+                        : selectedPatient.latestGlucose?.value
+                        ? `${selectedPatient.latestGlucose.value} mg/dL`
+                        : 'Sem registro'}
                     </div>
                   </div>
                 </div>
 
-                <div className="text-xs text-slate-600 dark:text-slate-300">
-                  Histórico de acompanhamento clínico regular. Paciente com boa adesão terapêutica na Unidade Básica.
-                </div>
+                {/* Dynamic Patient BP Chart inside Doctor Dossier */}
+                {(() => {
+                  const historyBP: BloodPressureRecord[] = [...(selectedPatient.historyBP || [])]
+                    .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime())
+                    .slice(-10);
+                  if (historyBP.length === 0) {
+                    return (
+                      <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 text-xs text-slate-400 text-center">
+                        Nenhum ponto de pressão arterial registrado para este paciente ainda.
+                      </div>
+                    );
+                  }
+                  const w = 520;
+                  const h = 130;
+                  const px = 32;
+                  const py = 18;
+                  const getX = (i: number) =>
+                    historyBP.length <= 1 ? w / 2 : px + (i / (historyBP.length - 1)) * (w - px * 2);
+                  const getY = (val: number) => {
+                    const clamped = Math.max(50, Math.min(190, val));
+                    return h - py - ((clamped - 50) / 140) * (h - py * 2);
+                  };
+                  const sPath =
+                    historyBP.length === 1
+                      ? `M ${w / 2 - 30} ${getY(historyBP[0].systolic)} L ${w / 2 + 30} ${getY(historyBP[0].systolic)}`
+                      : historyBP.map((r, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(r.systolic)}`).join(' ');
+                  const dPath =
+                    historyBP.length === 1
+                      ? `M ${w / 2 - 30} ${getY(historyBP[0].diastolic)} L ${w / 2 + 30} ${getY(historyBP[0].diastolic)}`
+                      : historyBP.map((r, i) => `${i === 0 ? 'M' : 'L'} ${getX(i)} ${getY(r.diastolic)}`).join(' ');
+
+                  return (
+                    <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-2">
+                        <span>Curva de Pressão Arterial ({historyBP.length} pontos)</span>
+                        <div className="flex items-center gap-3">
+                          <span className="flex items-center gap-1 text-rose-600">
+                            <span className="w-2 h-2 rounded-full bg-rose-500" /> Sistólica
+                          </span>
+                          <span className="flex items-center gap-1 text-blue-600">
+                            <span className="w-2 h-2 rounded-full bg-blue-500" /> Diastólica
+                          </span>
+                        </div>
+                      </div>
+                      <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-32 overflow-visible">
+                        <path d={sPath} fill="none" stroke="#f43f5e" strokeWidth="2.5" strokeLinecap="round" />
+                        <path d={dPath} fill="none" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" />
+                        {historyBP.map((r, i) => (
+                          <g key={r.id || i}>
+                            <circle cx={getX(i)} cy={getY(r.systolic)} r="4" fill="#f43f5e" stroke="#fff" strokeWidth="1.5" />
+                            <text x={getX(i)} y={getY(r.systolic) - 7} textAnchor="middle" className="fill-rose-600 text-[9px] font-bold">
+                              {r.systolic}
+                            </text>
+                            <circle cx={getX(i)} cy={getY(r.diastolic)} r="4" fill="#3b82f6" stroke="#fff" strokeWidth="1.5" />
+                            <text x={getX(i)} y={getY(r.diastolic) + 12} textAnchor="middle" className="fill-blue-600 text-[9px] font-bold">
+                              {r.diastolic}
+                            </text>
+                          </g>
+                        ))}
+                      </svg>
+                      <div className="flex justify-between text-[10px] text-slate-400 font-mono pt-1 border-t border-slate-100 dark:border-slate-800">
+                        {historyBP.map((r, i) => (
+                          <span key={r.id || i}>
+                            {new Date(r.recordedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
@@ -407,6 +482,57 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
                   UBS Dr. Manoel de Abreu · Equipe ESF 04<br />
                   ACS: Maria Aparecida dos Santos
                 </p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                    Medicamentos do Paciente ({(selectedPatient.medications || []).length})
+                  </h4>
+                  <button
+                    onClick={() => onOpenAddMedication(selectedPatient.patient.id)}
+                    className="text-xs font-bold text-teal-600 dark:text-teal-400 hover:underline"
+                  >
+                    + Prescrever
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {(selectedPatient.medications || []).length === 0 ? (
+                    <p className="text-xs text-slate-400">Nenhum medicamento registrado.</p>
+                  ) : (
+                    (selectedPatient.medications || []).map((med: Medication) => {
+                      const isDoc =
+                        med.addedByRole === 'PROFESSIONAL' ||
+                        Boolean(med.prescribedBy) ||
+                        ['med-1', 'med-2', 'med-3'].includes(med.id);
+                      return (
+                        <div
+                          key={med.id}
+                          className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 text-xs flex items-center justify-between gap-2"
+                        >
+                          <div>
+                            <div className="font-bold text-slate-900 dark:text-white">
+                              {med.name} {med.dosage}
+                            </div>
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                              {med.frequency} · {(med.reminderTimes || []).join(', ')}
+                            </div>
+                          </div>
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                              isDoc
+                                ? 'bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
+                                : 'bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800'
+                            }`}
+                          >
+                            {isDoc ? 'Médico' : 'Paciente'}
+                          </span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             </div>
           </div>

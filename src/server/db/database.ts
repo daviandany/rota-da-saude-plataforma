@@ -703,9 +703,27 @@ class PostgresDatabase implements IDatabase {
     const res = await this.pool.query('SELECT * FROM medications WHERE id = $1', [id]);
     if (!res.rows[0]) return null;
     const current = res.rows[0];
-    const status = data.status || current.status;
-    await this.pool.query('UPDATE medications SET status = $1 WHERE id = $2', [status, id]);
-    return { ...current, status };
+    const name = data.name !== undefined ? data.name : current.name;
+    const dosage = data.dosage !== undefined ? data.dosage : current.dosage;
+    const frequency = data.frequency !== undefined ? data.frequency : current.frequency;
+    const reminderTimes = data.reminderTimes !== undefined ? data.reminderTimes : current.reminder_times;
+    const notes = data.notes !== undefined ? data.notes : current.notes;
+    const status = data.status !== undefined ? data.status : current.status;
+    await this.pool.query(
+      'UPDATE medications SET name = $1, dosage = $2, frequency = $3, reminder_times = $4, notes = $5, status = $6 WHERE id = $7',
+      [name, dosage, frequency, reminderTimes, notes, status, id]
+    );
+    return {
+      id: current.id,
+      patientId: current.patient_id,
+      name,
+      dosage,
+      frequency,
+      reminderTimes,
+      notes,
+      status,
+      createdAt: current.created_at,
+    };
   }
 
   async getAppointments(patientId?: string): Promise<Appointment[]> {

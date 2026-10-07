@@ -135,75 +135,96 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-3">
           <div className="text-xs font-bold text-slate-700 dark:text-slate-300">Distribuição de risco cardiovascular</div>
 
-          <div className="flex items-center justify-between py-2">
-            {/* Donut Chart representation */}
-            <div className="relative w-28 h-28 flex items-center justify-center">
-              <svg className="w-28 h-28 -rotate-90" viewBox="0 0 36 36">
-                <circle cx="18" cy="18" r="14" fill="none" stroke="currentColor" className="text-slate-100 dark:text-slate-800" strokeWidth="5" />
-                <circle
-                  cx="18"
-                  cy="18"
-                  r="14"
-                  fill="none"
-                  stroke="#10b981"
-                  strokeWidth="5"
-                  strokeDasharray="60 100"
-                  strokeDashoffset="0"
-                />
-                <circle
-                  cx="18"
-                  cy="18"
-                  r="14"
-                  fill="none"
-                  stroke="#f59e0b"
-                  strokeWidth="5"
-                  strokeDasharray="19 100"
-                  strokeDashoffset="-60"
-                />
-                <circle
-                  cx="18"
-                  cy="18"
-                  r="14"
-                  fill="none"
-                  stroke="#ef4444"
-                  strokeWidth="5"
-                  strokeDasharray="9 100"
-                  strokeDashoffset="-79"
-                />
-              </svg>
-              <div className="absolute flex flex-col items-center justify-center text-center">
-                <span className="text-base font-black text-slate-800 dark:text-white leading-none">128</span>
-                <span className="text-[9px] text-slate-400 font-medium">pacientes</span>
-              </div>
-            </div>
+          {/* Distribuição de Risco Dinâmica */}
+          {(() => {
+            const totalPts = stats?.pacientesCadastrados || 3;
+            const highCount = stats?.riscoDistribuicao?.alto ?? 1;
+            const modCount = stats?.riscoDistribuicao?.moderado ?? 1;
+            const lowCount = stats?.riscoDistribuicao?.baixo ?? Math.max(0, totalPts - highCount - modCount);
+            const sumPts = Math.max(1, highCount + modCount + lowCount);
 
-            {/* Legend */}
-            <div className="space-y-2 text-xs">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-                  <span className="text-slate-600 dark:text-slate-400">Alto</span>
-                </div>
-                <span className="font-bold text-slate-800 dark:text-white">10%</span>
-              </div>
+            const highPct = Math.round((highCount / sumPts) * 100);
+            const modPct = Math.round((modCount / sumPts) * 100);
+            const lowPct = Math.max(0, 100 - highPct - modPct);
 
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
-                  <span className="text-slate-600 dark:text-slate-400">Moderado</span>
-                </div>
-                <span className="font-bold text-slate-800 dark:text-white">22%</span>
-              </div>
+            // Circumference of r=14 is ~88
+            const circ = 88;
+            const lowDash = (lowPct / 100) * circ;
+            const modDash = (modPct / 100) * circ;
+            const highDash = (highPct / 100) * circ;
 
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                  <span className="text-slate-600 dark:text-slate-400">Baixo</span>
+            return (
+              <div className="flex items-center justify-between py-2">
+                {/* Donut Chart representation */}
+                <div className="relative w-28 h-28 flex items-center justify-center">
+                  <svg className="w-28 h-28 -rotate-90" viewBox="0 0 36 36">
+                    <circle cx="18" cy="18" r="14" fill="none" stroke="currentColor" className="text-slate-100 dark:text-slate-800" strokeWidth="5" />
+                    <circle
+                      cx="18"
+                      cy="18"
+                      r="14"
+                      fill="none"
+                      stroke="#10b981"
+                      strokeWidth="5"
+                      strokeDasharray={`${lowDash} 100`}
+                      strokeDashoffset="0"
+                    />
+                    <circle
+                      cx="18"
+                      cy="18"
+                      r="14"
+                      fill="none"
+                      stroke="#f59e0b"
+                      strokeWidth="5"
+                      strokeDasharray={`${modDash} 100`}
+                      strokeDashoffset={`${-lowDash}`}
+                    />
+                    <circle
+                      cx="18"
+                      cy="18"
+                      r="14"
+                      fill="none"
+                      stroke="#ef4444"
+                      strokeWidth="5"
+                      strokeDasharray={`${highDash} 100`}
+                      strokeDashoffset={`${-(lowDash + modDash)}`}
+                    />
+                  </svg>
+                  <div className="absolute flex flex-col items-center justify-center text-center">
+                    <span className="text-base font-black text-slate-800 dark:text-white leading-none">{totalPts}</span>
+                    <span className="text-[9px] text-slate-400 font-medium">pacientes</span>
+                  </div>
                 </div>
-                <span className="font-bold text-slate-800 dark:text-white">68%</span>
+
+                {/* Legend */}
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+                      <span className="text-slate-600 dark:text-slate-400">Alto ({highCount})</span>
+                    </div>
+                    <span className="font-bold text-slate-800 dark:text-white">{highPct}%</span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                      <span className="text-slate-600 dark:text-slate-400">Moderado ({modCount})</span>
+                    </div>
+                    <span className="font-bold text-slate-800 dark:text-white">{modPct}%</span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                      <span className="text-slate-600 dark:text-slate-400">Baixo ({lowCount})</span>
+                    </div>
+                    <span className="font-bold text-slate-800 dark:text-white">{lowPct}%</span>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            );
+          })()}
 
           <button
             onClick={() => onNavigateTab('pacientes')}

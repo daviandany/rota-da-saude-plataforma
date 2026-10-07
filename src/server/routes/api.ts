@@ -56,6 +56,7 @@ apiRouter.get('/clinical/history', authMiddleware, clinicalController.getHistory
 // Medications
 apiRouter.get('/medications', authMiddleware, medicationController.getMedications);
 apiRouter.post('/medications', authMiddleware, medicationController.addMedication);
+apiRouter.put('/medications/:id', authMiddleware, medicationController.updateMedication);
 apiRouter.patch('/medications/:id/status', authMiddleware, medicationController.updateStatus);
 
 // Appointments

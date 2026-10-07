@@ -671,6 +671,7 @@ export class SupabaseAdapter implements IDatabase {
 
       if (!error && data) {
         data.forEach((d: any) => {
+          const prev = this.localMedications.get(d.id);
           this.localMedications.set(d.id, {
             id: d.id,
             patientId: d.patient_id,
@@ -680,6 +681,8 @@ export class SupabaseAdapter implements IDatabase {
             reminderTimes: d.reminder_times || ['08:00'],
             status: (d.status || (d.is_active ? 'ATIVO' : 'SUSPENSO')) as 'ATIVO' | 'SUSPENSO' | 'CONCLUIDO',
             notes: d.notes,
+            addedByRole: d.added_by_role || prev?.addedByRole || (d.notes?.includes('[Prescrito pelo Médico]') ? 'PROFESSIONAL' : 'PATIENT'),
+            prescribedBy: d.prescribed_by || prev?.prescribedBy,
             createdAt: d.created_at,
           });
         });
@@ -726,6 +729,7 @@ export class SupabaseAdapter implements IDatabase {
     if (data.dosage !== undefined) patch.dosage = data.dosage;
     if (data.frequency !== undefined) patch.frequency = data.frequency;
     if (data.reminderTimes !== undefined) patch.reminder_times = data.reminderTimes;
+    if (data.notes !== undefined) patch.notes = data.notes;
 
     const { data: updated } = await this.client
       .from('medications')
@@ -735,6 +739,7 @@ export class SupabaseAdapter implements IDatabase {
       .maybeSingle();
 
     if (!updated) return this.localMedications.get(id) || null;
+    const prev = this.localMedications.get(id);
     const result: Medication = {
       id: updated.id,
       patientId: updated.patient_id,
@@ -744,6 +749,8 @@ export class SupabaseAdapter implements IDatabase {
       reminderTimes: updated.reminder_times || ['08:00'],
       status: (updated.status || (updated.is_active ? 'ATIVO' : 'SUSPENSO')) as 'ATIVO' | 'SUSPENSO' | 'CONCLUIDO',
       notes: updated.notes,
+      addedByRole: prev?.addedByRole || 'PATIENT',
+      prescribedBy: prev?.prescribedBy,
       createdAt: updated.created_at,
     };
     this.localMedications.set(result.id, result);

@@ -28,6 +28,8 @@ import {
   Sparkles,
   ArrowRight,
   Filter,
+  Pencil,
+  Lock,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { PatientSummary, BloodPressureRecord, GlucoseRecord, Medication, Appointment } from '../../types';
@@ -39,6 +41,7 @@ interface WebPatientDashboardProps {
   onOpenPressureModal: () => void;
   onOpenGlucoseModal: () => void;
   onOpenAddMedication: () => void;
+  onEditMedication?: (med: Medication) => void;
   onOpenNotificationCenter: () => void;
   onOpenSymptomModal?: () => void;
   onOpenEmergencyModal?: () => void;
@@ -51,6 +54,7 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
   onOpenPressureModal,
   onOpenGlucoseModal,
   onOpenAddMedication,
+  onEditMedication,
   onOpenNotificationCenter,
   onOpenSymptomModal,
   onOpenEmergencyModal,
@@ -165,6 +169,94 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
     if (measurementFilter === 'CRITICAL') return item.isCritical;
     return true;
   });
+
+  // Dynamic Chart & Statistics Calculation from real records
+  const sortedPressureAsc = [...pressureHistory]
+    .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime())
+    .slice(timeframe === '7d' ? -10 : -30);
+
+  const sortedGlucoseAsc = [...glucoseHistory]
+    .sort((a, b) => new Date(a.recordedAt).getTime() - new Date(b.recordedAt).getTime())
+    .slice(timeframe === '7d' ? -10 : -30);
+
+  const avgSystolic =
+    pressureHistory.length > 0
+      ? Math.round(pressureHistory.reduce((acc, r) => acc + r.systolic, 0) / pressureHistory.length)
+      : null;
+  const avgDiastolic =
+    pressureHistory.length > 0
+      ? Math.round(pressureHistory.reduce((acc, r) => acc + r.diastolic, 0) / pressureHistory.length)
+      : null;
+  const bpControlledCount = pressureHistory.filter((r) => r.systolic < 140 && r.diastolic < 90).length;
+  const bpInTargetPct =
+    pressureHistory.length > 0 ? Math.round((bpControlledCount / pressureHistory.length) * 100) : 100;
+
+  // SVG Coordinate Helpers for Desktop Chart (viewBox 0 0 700 160)
+  const svgWidth = 700;
+  const svgHeight = 160;
+  const padX = 45;
+  const padY = 20;
+
+  const getChartX = (index: number, total: number) => {
+    if (total <= 1) return svgWidth / 2;
+    return padX + (index / (total - 1)) * (svgWidth - padX * 2);
+  };
+
+  const getPressureY = (val: number) => {
+    const minP = 50;
+    const maxP = 190;
+    const clamped = Math.max(minP, Math.min(maxP, val));
+    return svgHeight - padY - ((clamped - minP) / (maxP - minP)) * (svgHeight - padY * 2);
+  };
+
+  const getGlucoseY = (val: number) => {
+    const minG = 50;
+    const maxG = 240;
+    const clamped = Math.max(minG, Math.min(maxG, val));
+    return svgHeight - padY - ((clamped - minG) / (maxG - minG)) * (svgHeight - padY * 2);
+  };
+
+  const pressurePoints = sortedPressureAsc.map((r, i) => {
+    const d = new Date(r.recordedAt);
+    return {
+      id: r.id,
+      x: getChartX(i, sortedPressureAsc.length),
+      sysY: getPressureY(r.systolic),
+      diaY: getPressureY(r.diastolic),
+      systolic: r.systolic,
+      diastolic: r.diastolic,
+      pulse: r.pulse,
+      isCritical: r.isCritical || r.systolic >= 140 || r.diastolic >= 90,
+      label: d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      timeLabel: d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+    };
+  });
+
+  const glucosePoints = sortedGlucoseAsc.map((r, i) => {
+    const d = new Date(r.recordedAt);
+    return {
+      id: r.id,
+      x: getChartX(i, sortedGlucoseAsc.length),
+      y: getGlucoseY(r.glucoseValue),
+      value: r.glucoseValue,
+      moment: r.moment,
+      isCritical: r.isCritical || r.glucoseValue < 70 || r.glucoseValue > 180,
+      label: d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      timeLabel: d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+    };
+  });
+
+  const buildSmoothPath = (pts: { x: number; y: number }[]) => {
+    if (pts.length === 0) return '';
+    if (pts.length === 1) {
+      return `M ${pts[0].x - 35} ${pts[0].y} L ${pts[0].x + 35} ${pts[0].y}`;
+    }
+    return pts.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  };
+
+  const sysLinePath = buildSmoothPath(pressurePoints.map((p) => ({ x: p.x, y: p.sysY })));
+  const diaLinePath = buildSmoothPath(pressurePoints.map((p) => ({ x: p.x, y: p.diaY })));
+  const glucLinePath = buildSmoothPath(glucosePoints.map((p) => ({ x: p.x, y: p.y })));
 
   return (
     <div className="space-y-6">
@@ -507,16 +599,28 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
                     </div>
                     <div>
                       <h3 className="text-sm font-bold text-slate-900 dark:text-white">Curva Clínica Recente</h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">Pressão média: 122/81 mmHg nos últimos 7 dias</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {avgSystolic && avgDiastolic
+                          ? `Pressão média: ${avgSystolic}/${avgDiastolic} mmHg (${pressureHistory.length} ${pressureHistory.length === 1 ? 'registro' : 'registros'})`
+                          : 'Nenhuma aferição registrada ainda'}
+                      </p>
                     </div>
                   </div>
-                  <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
-                    Estável
+                  <span
+                    className={`text-[11px] font-bold px-2 py-0.5 rounded-md border ${
+                      bpInTargetPct >= 70
+                        ? 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950 border-emerald-200 dark:border-emerald-800'
+                        : 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800'
+                    }`}
+                  >
+                    {pressureHistory.length === 0 ? 'Sem dados' : bpInTargetPct >= 70 ? 'Estável' : 'Atenção'}
                   </span>
                 </div>
 
                 <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-4">
-                  Seus últimos 6 registros de pressão sistólica e diastólica permaneceram dentro da meta recomendada pelo Ministério da Saúde (&lt; 130/80 mmHg).
+                  {pressureHistory.length > 0
+                    ? `Você possui ${pressureHistory.length} ${pressureHistory.length === 1 ? 'aferição de pressão' : 'aferições de pressão'} e ${glucoseHistory.length} ${glucoseHistory.length === 1 ? 'teste de glicemia' : 'testes de glicemia'} sincronizados no gráfico clínico.`
+                    : 'Registre sua primeira aferição de pressão arterial ou glicemia para visualizar os pontos reais na curva de monitoramento.'}
                 </p>
 
                 {/* Mini Visual Preview */}
@@ -525,10 +629,19 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
                     <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
                     <span className="font-semibold text-slate-700 dark:text-slate-200">Última aferição:</span>
                     <span className="font-bold text-slate-900 dark:text-white">
-                      {pressureHistory[0] ? `${pressureHistory[0].systolic}/${pressureHistory[0].diastolic} mmHg` : '120/80 mmHg'}
+                      {pressureHistory[0] ? `${pressureHistory[0].systolic}/${pressureHistory[0].diastolic} mmHg` : 'Sem registro'}
                     </span>
                   </div>
-                  <span className="text-slate-400 text-[11px]">Hoje às 08:30</span>
+                  <span className="text-slate-400 text-[11px]">
+                    {pressureHistory[0]?.recordedAt
+                      ? new Date(pressureHistory[0].recordedAt).toLocaleString('pt-BR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : 'Aguardando leitura'}
+                  </span>
                 </div>
               </div>
 
@@ -563,20 +676,48 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
                 </div>
 
                 <div className="space-y-2 mb-4">
-                  {medications.slice(0, 2).map((med) => (
-                    <div
-                      key={med.id}
-                      className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-700/80 flex items-center justify-between text-xs"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-slate-900 dark:text-white">{med.name}</span>
-                        <span className="text-slate-500 dark:text-slate-400 font-medium">({med.dosage})</span>
+                  {medications.slice(0, 2).map((med) => {
+                    const isDoctorMed =
+                      med.addedByRole === 'PROFESSIONAL' ||
+                      Boolean(med.prescribedBy) ||
+                      ['med-1', 'med-2', 'med-3'].includes(med.id);
+                    return (
+                      <div
+                        key={med.id}
+                        className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-700/80 flex items-center justify-between text-xs"
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-slate-900 dark:text-white">{med.name}</span>
+                          <span className="text-slate-500 dark:text-slate-400 font-medium">({med.dosage})</span>
+                          {isDoctorMed ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/70 px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
+                              <Lock className="w-2.5 h-2.5" />
+                              Médico
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-semibold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/70 px-1.5 py-0.5 rounded border border-teal-200 dark:border-teal-800">
+                              Paciente
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-teal-700 dark:text-teal-300 font-bold bg-teal-50 dark:bg-teal-950 px-2 py-0.5 rounded-md text-[11px]">
+                            {med.reminderTimes[0] || '08:00'}
+                          </span>
+                          {!isDoctorMed && onEditMedication && (
+                            <button
+                              type="button"
+                              onClick={() => onEditMedication(med)}
+                              className="p-1.5 rounded-lg text-teal-700 dark:text-teal-300 hover:bg-teal-100 dark:hover:bg-teal-900/50 transition"
+                              title="Editar medicamento adicionado por você"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <span className="text-teal-700 dark:text-teal-300 font-bold bg-teal-50 dark:bg-teal-950 px-2 py-0.5 rounded-md text-[11px]">
-                        {med.reminderTimes[0] || '14:00'}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
@@ -702,66 +843,202 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
               </div>
 
               {/* Chart SVG Canvas */}
-              <div className="h-64 w-full bg-slate-50/70 dark:bg-slate-950/70 rounded-2xl border border-slate-100 dark:border-slate-800 p-4 flex flex-col justify-end relative overflow-hidden">
-                {/* Horizontal reference lines */}
-                <div className="absolute inset-x-4 top-8 border-b border-dashed border-slate-200 dark:border-slate-800 text-[10px] text-slate-400 font-mono flex justify-between">
-                  <span>{graphMetric === 'pressure' ? '140 mmHg (Limite Hipertensão)' : '140 mg/dL (Limite Pós-prandial)'}</span>
-                </div>
-                <div className="absolute inset-x-4 top-24 border-b border-dashed border-emerald-300 dark:border-emerald-800 text-[10px] text-emerald-600 dark:text-emerald-400 font-mono flex justify-between">
-                  <span>{graphMetric === 'pressure' ? '120/80 mmHg (Meta Ótima SUS)' : '100 mg/dL (Meta Jejum)'}</span>
+              <div className="h-72 w-full bg-slate-50/70 dark:bg-slate-950/70 rounded-2xl border border-slate-100 dark:border-slate-800 p-4 flex flex-col justify-between relative overflow-hidden">
+                {/* Horizontal reference lines positioned dynamically */}
+                <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono z-10">
+                  <span>
+                    {graphMetric === 'pressure'
+                      ? 'Linha de referência: 140/90 mmHg (Limite Hipertensão) · 120/80 mmHg (Meta SUS)'
+                      : 'Linha de referência: 140 mg/dL (Pós-prandial) · 100 mg/dL (Meta Jejum)'}
+                  </span>
+                  <span className="font-bold text-slate-600 dark:text-slate-300">
+                    {graphMetric === 'pressure'
+                      ? `${pressurePoints.length} ${pressurePoints.length === 1 ? 'ponto registrado' : 'pontos registrados'}`
+                      : `${glucosePoints.length} ${glucosePoints.length === 1 ? 'ponto registrado' : 'pontos registrados'}`}
+                  </span>
                 </div>
 
-                {/* SVG Curve */}
-                <svg className="w-full h-44 overflow-visible" viewBox="0 0 700 160">
-                  {graphMetric === 'pressure' ? (
-                    <>
-                      <path
-                        d="M 50 80 Q 150 40 250 55 T 450 70 T 650 50"
-                        fill="none"
-                        stroke="#f43f5e"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                      />
-                      <path
-                        d="M 50 120 Q 150 100 250 110 T 450 115 T 650 105"
-                        fill="none"
-                        stroke="#3b82f6"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                      />
-                      <circle cx="50" cy="80" r="4" fill="#f43f5e" />
-                      <circle cx="250" cy="55" r="4" fill="#f43f5e" />
-                      <circle cx="450" cy="70" r="4" fill="#f43f5e" />
-                      <circle cx="650" cy="50" r="4" fill="#f43f5e" />
+                {(graphMetric === 'pressure' && pressurePoints.length === 0) ||
+                (graphMetric === 'glucose' && glucosePoints.length === 0) ? (
+                  <div className="flex-1 flex flex-col items-center justify-center text-center py-6 space-y-2">
+                    <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                      Nenhum registro de {graphMetric === 'pressure' ? 'Pressão Arterial' : 'Glicemia Capilar'} neste período
+                    </p>
+                    <p className="text-[11px] text-slate-400 max-w-md">
+                      Adicione uma nova medição para que os pontos sejam plotados dinamicamente no gráfico.
+                    </p>
+                    <button
+                      onClick={graphMetric === 'pressure' ? onOpenPressureModal : onOpenGlucoseModal}
+                      className="mt-1 px-3.5 py-1.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold transition"
+                    >
+                      + Registrar {graphMetric === 'pressure' ? 'Pressão' : 'Glicemia'} Agora
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {/* Dynamic SVG Curve */}
+                    <svg className="w-full h-44 overflow-visible" viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
+                      {graphMetric === 'pressure' ? (
+                        <>
+                          {/* Reference Lines for Pressure */}
+                          <line
+                            x1={padX}
+                            y1={getPressureY(140)}
+                            x2={svgWidth - padX}
+                            y2={getPressureY(140)}
+                            stroke="#fda4af"
+                            strokeDasharray="4 4"
+                            strokeWidth="1"
+                          />
+                          <line
+                            x1={padX}
+                            y1={getPressureY(120)}
+                            x2={svgWidth - padX}
+                            y2={getPressureY(120)}
+                            stroke="#6ee7b7"
+                            strokeDasharray="4 4"
+                            strokeWidth="1"
+                          />
+                          <line
+                            x1={padX}
+                            y1={getPressureY(80)}
+                            x2={svgWidth - padX}
+                            y2={getPressureY(80)}
+                            stroke="#93c5fd"
+                            strokeDasharray="4 4"
+                            strokeWidth="1"
+                          />
 
-                      <circle cx="50" cy="120" r="4" fill="#3b82f6" />
-                      <circle cx="250" cy="110" r="4" fill="#3b82f6" />
-                      <circle cx="450" cy="115" r="4" fill="#3b82f6" />
-                      <circle cx="650" cy="105" r="4" fill="#3b82f6" />
-                    </>
-                  ) : (
-                    <>
-                      <path
-                        d="M 50 100 Q 150 60 250 80 T 450 65 T 650 75"
-                        fill="none"
-                        stroke="#0d9488"
-                        strokeWidth="3"
-                        strokeLinecap="round"
-                      />
-                      <circle cx="50" cy="100" r="4" fill="#0d9488" />
-                      <circle cx="250" cy="80" r="4" fill="#0d9488" />
-                      <circle cx="450" cy="65" r="4" fill="#0d9488" />
-                      <circle cx="650" cy="75" r="4" fill="#0d9488" />
-                    </>
-                  )}
-                </svg>
+                          {/* Paths */}
+                          <path
+                            d={sysLinePath}
+                            fill="none"
+                            stroke="#f43f5e"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <path
+                            d={diaLinePath}
+                            fill="none"
+                            stroke="#3b82f6"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
 
-                <div className="flex justify-between text-[11px] font-semibold text-slate-400 pt-2 px-6 border-t border-slate-200/80 dark:border-slate-800 mt-2">
-                  <span>Início do período</span>
-                  <span>Meio da semana</span>
-                  <span>Ontem</span>
-                  <span>Hoje</span>
-                </div>
+                          {/* Dynamic Points & Value Labels */}
+                          {pressurePoints.map((pt) => (
+                            <g key={pt.id}>
+                              {/* Systolic Point */}
+                              <circle
+                                cx={pt.x}
+                                cy={pt.sysY}
+                                r="5"
+                                fill={pt.isCritical ? '#e11d48' : '#f43f5e'}
+                                stroke="#ffffff"
+                                strokeWidth="2"
+                              >
+                                <title>{`Sistólica: ${pt.systolic} mmHg (${pt.label} ${pt.timeLabel})`}</title>
+                              </circle>
+                              <text
+                                x={pt.x}
+                                y={pt.sysY - 9}
+                                textAnchor="middle"
+                                className="fill-rose-600 dark:fill-rose-400 text-[10px] font-bold"
+                              >
+                                {pt.systolic}
+                              </text>
+
+                              {/* Diastolic Point */}
+                              <circle
+                                cx={pt.x}
+                                cy={pt.diaY}
+                                r="5"
+                                fill="#3b82f6"
+                                stroke="#ffffff"
+                                strokeWidth="2"
+                              >
+                                <title>{`Diastólica: ${pt.diastolic} mmHg (${pt.label} ${pt.timeLabel})`}</title>
+                              </circle>
+                              <text
+                                x={pt.x}
+                                y={pt.diaY + 15}
+                                textAnchor="middle"
+                                className="fill-blue-600 dark:fill-blue-400 text-[10px] font-bold"
+                              >
+                                {pt.diastolic}
+                              </text>
+                            </g>
+                          ))}
+                        </>
+                      ) : (
+                        <>
+                          {/* Reference Lines for Glucose */}
+                          <line
+                            x1={padX}
+                            y1={getGlucoseY(140)}
+                            x2={svgWidth - padX}
+                            y2={getGlucoseY(140)}
+                            stroke="#fcd34d"
+                            strokeDasharray="4 4"
+                            strokeWidth="1"
+                          />
+                          <line
+                            x1={padX}
+                            y1={getGlucoseY(100)}
+                            x2={svgWidth - padX}
+                            y2={getGlucoseY(100)}
+                            stroke="#6ee7b7"
+                            strokeDasharray="4 4"
+                            strokeWidth="1"
+                          />
+
+                          <path
+                            d={glucLinePath}
+                            fill="none"
+                            stroke="#0d9488"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+
+                          {glucosePoints.map((pt) => (
+                            <g key={pt.id}>
+                              <circle
+                                cx={pt.x}
+                                cy={pt.y}
+                                r="5"
+                                fill={pt.isCritical ? '#e11d48' : '#0d9488'}
+                                stroke="#ffffff"
+                                strokeWidth="2"
+                              >
+                                <title>{`Glicemia: ${pt.value} mg/dL (${pt.label} ${pt.timeLabel})`}</title>
+                              </circle>
+                              <text
+                                x={pt.x}
+                                y={pt.y - 9}
+                                textAnchor="middle"
+                                className="fill-teal-700 dark:fill-teal-300 text-[10px] font-bold"
+                              >
+                                {pt.value}
+                              </text>
+                            </g>
+                          ))}
+                        </>
+                      )}
+                    </svg>
+
+                    {/* Dynamic X-Axis Dates */}
+                    <div className="flex justify-between text-[11px] font-semibold text-slate-400 pt-2 px-4 border-t border-slate-200/80 dark:border-slate-800 mt-2">
+                      {(graphMetric === 'pressure' ? pressurePoints : glucosePoints).map((pt) => (
+                        <span key={pt.id} className="truncate text-center">
+                          {pt.label} <span className="text-[9px] opacity-75">{pt.timeLabel}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -933,49 +1210,95 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
 
             {/* Medications Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {medications.map((med) => (
-                <div
-                  key={med.id}
-                  className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 hover:border-teal-300 transition flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="flex items-start justify-between gap-3 mb-3">
-                      <div className="w-10 h-10 rounded-xl bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300 flex items-center justify-center shrink-0">
-                        <Pill className="w-5 h-5" />
+              {medications.map((med) => {
+                const isDoctorMed =
+                  med.addedByRole === 'PROFESSIONAL' ||
+                  Boolean(med.prescribedBy) ||
+                  ['med-1', 'med-2', 'med-3'].includes(med.id);
+
+                return (
+                  <div
+                    key={med.id}
+                    className="p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 hover:border-teal-300 transition flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div className="w-10 h-10 rounded-xl bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300 flex items-center justify-center shrink-0">
+                          <Pill className="w-5 h-5" />
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          {isDoctorMed ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-100/80 dark:bg-indigo-950 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
+                              <Stethoscope className="w-3 h-3" />
+                              Prescrito pelo Médico
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100/80 dark:bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
+                              Adicionado pelo Paciente
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100/80 dark:bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
-                        Ativo na ESF
-                      </span>
+
+                      <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                        {med.name} {med.dosage}
+                      </h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{med.frequency}</p>
+                      {med.notes && (
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 italic mt-1">
+                          Obs: {med.notes}
+                        </p>
+                      )}
+
+                      <div className="mt-3 p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/70 dark:border-slate-800">
+                        <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                          Horários programados:
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {med.reminderTimes.map((time, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2 py-0.5 bg-teal-50 dark:bg-teal-950 text-teal-800 dark:text-teal-300 rounded text-[11px] font-bold border border-teal-200 dark:border-teal-800"
+                            >
+                              {time}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
                     </div>
 
-                    <h4 className="text-sm font-black text-slate-900 dark:text-white">
-                      {med.name} {med.dosage}
-                    </h4>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{med.frequency}</p>
-
-                    <div className="mt-3 p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/70 dark:border-slate-800">
-                      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
-                        Horários programados:
-                      </span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {med.reminderTimes.map((time, idx) => (
-                          <span
-                            key={idx}
-                            className="px-2 py-0.5 bg-teal-50 dark:bg-teal-950 text-teal-800 dark:text-teal-300 rounded text-[11px] font-bold border border-teal-200 dark:border-teal-800"
-                          >
-                            {time}
+                    <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-slate-700 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between gap-2">
+                      {isDoctorMed ? (
+                        <>
+                          <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400 font-medium">
+                            <Lock className="w-3.5 h-3.5 text-slate-400" />
+                            <span>{med.prescribedBy ? `Dr(a). ${med.prescribedBy.replace(/^Dr(a)?\.?\s*/i, '')}` : 'Receita Médica'}</span>
                           </span>
-                        ))}
-                      </div>
+                          <span className="text-slate-400 dark:text-slate-500 font-semibold">
+                            Somente leitura
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-teal-700 dark:text-teal-400 font-medium">
+                            Cadastrado por você
+                          </span>
+                          {onEditMedication && (
+                            <button
+                              type="button"
+                              onClick={() => onEditMedication(med)}
+                              className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs transition inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                              <span>Editar</span>
+                            </button>
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
-
-                  <div className="mt-4 pt-3 border-t border-slate-200/60 dark:border-slate-700 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
-                    <span>Farmácia Básica SUS</span>
-                    <span className="text-teal-600 dark:text-teal-400 font-bold">Disponível na UBS</span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Farmácia Popular SUS Banner */}
@@ -1153,21 +1476,33 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-800">
-                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Período Consolidado</span>
-                <div className="text-lg font-black text-slate-900 dark:text-white mt-1">Últimos 30 Dias</div>
-                <p className="text-[11px] text-slate-400 mt-1">Média de 2 aferições/dia</p>
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Total de Medições</span>
+                <div className="text-lg font-black text-slate-900 dark:text-white mt-1">
+                  {pressureHistory.length + glucoseHistory.length} Registros
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  {pressureHistory.length} PA · {glucoseHistory.length} Glicemia
+                </p>
               </div>
 
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-800">
                 <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Pressão Média no Período</span>
-                <div className="text-lg font-black text-slate-900 dark:text-white mt-1">122 / 81 mmHg</div>
-                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">94% das leituras na meta</p>
+                <div className="text-lg font-black text-slate-900 dark:text-white mt-1">
+                  {avgSystolic && avgDiastolic ? `${avgSystolic} / ${avgDiastolic} mmHg` : 'Sem registros'}
+                </div>
+                <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">
+                  {pressureHistory.length > 0 ? `${bpInTargetPct}% das leituras na meta` : 'Aguardando aferições'}
+                </p>
               </div>
 
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-800">
                 <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Aderência aos Medicamentos</span>
-                <div className="text-lg font-black text-slate-900 dark:text-white mt-1">92% de Adesão</div>
-                <p className="text-[11px] text-teal-600 dark:text-teal-400 mt-1">Lembretes diários ativos</p>
+                <div className="text-lg font-black text-slate-900 dark:text-white mt-1">
+                  {summary?.healthStatus.percentage || 92}% de Adesão
+                </div>
+                <p className="text-[11px] text-teal-600 dark:text-teal-400 mt-1">
+                  {medications.length} {medications.length === 1 ? 'medicamento ativo' : 'medicamentos ativos'}
+                </p>
               </div>
             </div>
 

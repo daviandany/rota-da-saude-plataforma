@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Pill, Bell, Plus, Calendar, Clock, CheckCircle, Radio, Sparkles, Send } from 'lucide-react';
+import { ArrowLeft, Pill, Bell, Plus, Calendar, Clock, CheckCircle, Radio, Sparkles, Send, Pencil, Lock } from 'lucide-react';
 import { api } from '../../services/api';
 import { Medication, Appointment } from '../../types';
 import { useNotifications } from '../../context/NotificationContext';
@@ -7,11 +7,13 @@ import { useNotifications } from '../../context/NotificationContext';
 interface PatientMedicationsProps {
   onBack?: () => void;
   onOpenAddMedication: () => void;
+  onEditMedication?: (med: Medication) => void;
 }
 
 export const PatientMedications: React.FC<PatientMedicationsProps> = ({
   onBack,
   onOpenAddMedication,
+  onEditMedication,
 }) => {
   const { permission, requestPushPermission, testMedicationReminder, loading: fcmLoading } = useNotifications();
   const [activeTab, setActiveTab] = useState<'meds' | 'appointments'>('meds');
@@ -145,33 +147,64 @@ export const PatientMedications: React.FC<PatientMedicationsProps> = ({
             </div>
 
             {/* Medications List */}
-            {medications.map((med) => (
-              <div
-                key={med.id}
-                className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-950/60 border border-teal-100 dark:border-teal-800 flex items-center justify-center text-teal-700 dark:text-teal-400 shrink-0">
-                    <Pill className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-800 dark:text-white">
-                      {med.name} {med.dosage}
-                    </h3>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      {med.frequency}
+            {medications.map((med) => {
+              const isDoctorMed =
+                med.addedByRole === 'PROFESSIONAL' ||
+                Boolean(med.prescribedBy) ||
+                ['med-1', 'med-2', 'med-3'].includes(med.id);
+              return (
+                <div
+                  key={med.id}
+                  className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-slate-200/80 dark:border-slate-800 shadow-xs flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-teal-50 dark:bg-teal-950/60 border border-teal-100 dark:border-teal-800 flex items-center justify-center text-teal-700 dark:text-teal-400 shrink-0">
+                      <Pill className="w-5 h-5" />
                     </div>
-                    <div className="text-xs font-bold text-teal-700 dark:text-teal-400 mt-1">
-                      {med.reminderTimes.join(' | ')}
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-xs font-bold text-slate-800 dark:text-white">
+                          {med.name} {med.dosage}
+                        </h3>
+                        {isDoctorMed ? (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-bold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950 px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
+                            <Lock className="w-2.5 h-2.5" />
+                            Prescrito pelo Médico
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                            Adicionado por você
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        {med.frequency}
+                      </div>
+                      <div className="text-xs font-bold text-teal-700 dark:text-teal-400 mt-1">
+                        {med.reminderTimes.join(' | ')}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="p-2 text-slate-400 dark:text-slate-500">
-                  <Bell className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                  <div className="flex items-center gap-2">
+                    {!isDoctorMed && onEditMedication ? (
+                      <button
+                        type="button"
+                        onClick={() => onEditMedication(med)}
+                        className="px-2.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-[11px] font-bold flex items-center gap-1 transition"
+                      >
+                        <Pencil className="w-3 h-3" />
+                        <span>Editar</span>
+                      </button>
+                    ) : (
+                      <div className="p-2 text-slate-400 dark:text-slate-500" title="Prescrição médica (somente leitura)">
+                        <Lock className="w-4 h-4 text-slate-400" />
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {/* Button Adicionar Medicamento */}
             <button

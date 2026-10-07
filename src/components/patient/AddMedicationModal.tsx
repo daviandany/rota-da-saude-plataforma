@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
-import { ArrowLeft, Clock, Plus, X, Pill } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, Clock, Plus, X, Pill, Stethoscope } from 'lucide-react';
 import { api } from '../../services/api';
+import { Medication, Patient } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 
 interface AddMedicationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
   patientId?: string;
+  medicationToEdit?: Medication | null;
 }
 
 export const AddMedicationModal: React.FC<AddMedicationModalProps> = ({
@@ -14,7 +17,12 @@ export const AddMedicationModal: React.FC<AddMedicationModalProps> = ({
   onClose,
   onSuccess,
   patientId,
+  medicationToEdit,
 }) => {
+  const { user } = useAuth();
+  const isDoctor = user?.role === 'PROFESSIONAL';
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [selectedPatient, setSelectedPatient] = useState<string>(patientId || '');
   const [name, setName] = useState('');
   const [dosage, setDosage] = useState('');
   const [frequency, setFrequency] = useState('Todos os dias');
@@ -23,6 +31,42 @@ export const AddMedicationModal: React.FC<AddMedicationModalProps> = ({
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (isDoctor) {
+        api.getDoctorPatients().then((list) => {
+          setPatients(list);
+          if (patientId && list.some((p) => p.id === patientId)) {
+            setSelectedPatient(patientId);
+          } else if (list.length > 0) {
+            setSelectedPatient(list[0].id);
+          }
+        }).catch(() => {});
+      } else {
+        setSelectedPatient(patientId || user?.profileId || user?.id || '');
+      }
+
+      if (medicationToEdit) {
+        setName(medicationToEdit.name || '');
+        setDosage(medicationToEdit.dosage || '');
+        setFrequency(medicationToEdit.frequency || 'Todos os dias');
+        setReminderTimes(
+          medicationToEdit.reminderTimes && medicationToEdit.reminderTimes.length > 0
+            ? medicationToEdit.reminderTimes
+            : ['08:00']
+        );
+        setNotes(medicationToEdit.notes || '');
+      } else {
+        setName('');
+        setDosage('');
+        setFrequency('Todos os dias');
+        setReminderTimes(['08:00']);
+        setNotes('');
+      }
+      setError(null);
+    }
+  }, [isOpen, medicationToEdit, isDoctor, patientId, user?.profileId, user?.id]);
 
   if (!isOpen) return null;
 
@@ -42,18 +86,33 @@ export const AddMedicationModal: React.FC<AddMedicationModalProps> = ({
     setLoading(true);
     setError(null);
     try {
-      await api.addMedication({
-        patientId,
-        name,
-        dosage,
-        frequency,
-        reminderTimes,
-        notes,
-      });
+      const targetPatientId = isDoctor
+        ? selectedPatient || patientId
+        : medicationToEdit?.patientId || patientId || user?.profileId || user?.id;
+
+      if (medicationToEdit) {
+        await api.updateMedication(medicationToEdit.id, {
+          patientId: targetPatientId,
+          name,
+          dosage,
+          frequency,
+          reminderTimes,
+          notes,
+        });
+      } else {
+        await api.addMedication({
+          patientId: targetPatientId,
+          name,
+          dosage,
+          frequency,
+          reminderTimes,
+          notes,
+        });
+      }
       onSuccess();
       onClose();
     } catch (e: any) {
-      setError(e.message || 'Erro ao adicionar medicamento');
+      setError(e.message || 'Erro ao salvar medicamento');
     } finally {
       setLoading(false);
     }
@@ -71,9 +130,17 @@ export const AddMedicationModal: React.FC<AddMedicationModalProps> = ({
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2">
-            <Pill className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+            {isDoctor ? (
+              <Stethoscope className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            ) : (
+              <Pill className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+            )}
             <h2 className="text-base font-bold text-slate-800 dark:text-white">
-              Adicionar Medicamento
+              {medicationToEdit
+                ? 'Editar Medicamento'
+                : isDoctor
+                ? 'Prescrever Medicamento (Médico)'
+                : 'Adicionar Medicamento'}
             </h2>
           </div>
         </div>
@@ -82,6 +149,28 @@ export const AddMedicationModal: React.FC<AddMedicationModalProps> = ({
           {error && (
             <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs">
               {error}
+            </div>
+          )}
+
+          {isDoctor && !medicationToEdit && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Paciente da Prescrição *
+              </label>
+              <select
+                value={selectedPatient}
+                onChange={(e) => setSelectedPatient(e.target.value)}
+                className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-teal-600 outline-none"
+              >
+                {patients.map((pt) => (
+                  <option key={pt.id} value={pt.id}>
+                    {pt.name} ({pt.age} anos)
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-1">
+                Medicamentos prescritos pelo médico ficam bloqueados para edição pelo paciente.
+              </p>
             </div>
           )}
 
@@ -188,7 +277,7 @@ export const AddMedicationModal: React.FC<AddMedicationModalProps> = ({
             disabled={loading}
             className="w-full py-3 bg-teal-800 hover:bg-teal-700 active:scale-[0.99] text-white font-bold text-xs rounded-xl shadow-md transition disabled:opacity-50"
           >
-            {loading ? 'Salvando...' : 'Salvar Medicamento'}
+            {loading ? 'Salvando...' : medicationToEdit ? 'Salvar Alterações' : 'Salvar Medicamento'}
           </button>
         </form>
       </div>

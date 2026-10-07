@@ -14,6 +14,8 @@ export class MedicationService {
     frequency: string;
     reminderTimes: string[];
     notes?: string;
+    addedByRole?: 'PATIENT' | 'PROFESSIONAL' | 'ADMIN';
+    prescribedBy?: string;
   }) {
     const db = await getDatabase();
     const newMed: Medication = {
@@ -25,9 +27,27 @@ export class MedicationService {
       reminderTimes: data.reminderTimes || ['08:00'],
       status: 'ATIVO',
       notes: data.notes,
+      addedByRole: data.addedByRole || 'PATIENT',
+      prescribedBy: data.prescribedBy,
       createdAt: new Date().toISOString(),
     };
     return db.addMedication(newMed);
+  }
+
+  static async update(
+    medicationId: string,
+    data: {
+      name?: string;
+      dosage?: string;
+      frequency?: string;
+      reminderTimes?: string[];
+      notes?: string;
+      status?: 'ATIVO' | 'SUSPENSO' | 'CONCLUIDO';
+    },
+    actorRole?: 'PATIENT' | 'PROFESSIONAL' | 'ADMIN'
+  ) {
+    const db = await getDatabase();
+    return db.updateMedication(medicationId, data);
   }
 
   static async updateStatus(medicationId: string, status: 'ATIVO' | 'SUSPENSO' | 'CONCLUIDO') {
