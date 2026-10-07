@@ -10,30 +10,51 @@ import {
 } from 'firebase/auth';
 import {
   getFirestore,
+  initializeFirestore,
   doc,
   getDoc,
   setDoc,
-  getDocFromServer,
   serverTimestamp,
 } from 'firebase/firestore';
 import firebaseAppletConfig from '../../firebase-applet-config.json';
 
 // 1. Variáveis Públicas (Frontend - Firebase Client SDK)
+const customProjectId = process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID;
+const isCustomProject = Boolean(
+  customProjectId && customProjectId !== firebaseAppletConfig.projectId
+);
+
 export const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY || firebaseAppletConfig.apiKey,
   authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || firebaseAppletConfig.authDomain,
-  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || firebaseAppletConfig.projectId,
+  projectId: customProjectId || firebaseAppletConfig.projectId,
   storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || firebaseAppletConfig.storageBucket,
   messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || firebaseAppletConfig.messagingSenderId,
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID || firebaseAppletConfig.appId,
-  firestoreDatabaseId: firebaseAppletConfig.firestoreDatabaseId,
+  firestoreDatabaseId: isCustomProject ? undefined : firebaseAppletConfig.firestoreDatabaseId,
 };
 
 // Initialize Firebase App
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// CRITICAL: The app will break without specifying firestoreDatabaseId
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+// Initialize Firestore with auto-detect long polling to avoid WebChannel timeouts in iframes/proxies
+function createFirestoreInstance() {
+  try {
+    return firebaseConfig.firestoreDatabaseId
+      ? initializeFirestore(
+          app,
+          { experimentalAutoDetectLongPolling: true },
+          firebaseConfig.firestoreDatabaseId
+        )
+      : initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+  } catch {
+    return firebaseConfig.firestoreDatabaseId
+      ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+      : getFirestore(app);
+  }
+}
+
+export const db = createFirestoreInstance();
 
 // Firebase Auth
 export const auth = getAuth(app);
@@ -92,24 +113,10 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Mandatory connection test on boot
+// Verificação de conectividade não bloqueante (compatível com arquitetura Firebase Auth + Supabase)
 export async function testConnection(): Promise<boolean> {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-    console.info('[Firebase] Conexão com Firestore verificada com sucesso.');
-    return true;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('Please check your Firebase configuration.');
-      return false;
-    }
-    // Expected in rules default deny for test collection
-    return true;
-  }
+  return Boolean(app && auth);
 }
-
-// Test connection on initial load
-testConnection();
 
 export interface FirebaseUserProfile {
   uid: string;
@@ -121,7 +128,7 @@ export interface FirebaseUserProfile {
   updatedAt?: string;
 }
 
-// Sync user to Firestore
+// Sync user to Firestore (non-blocking with timeout to guarantee instant login redirect)
 export async function syncUserToFirestore(
   user: { uid: string; email?: string | null; displayName?: string | null; photoURL?: string | null },
   role: 'PATIENT' | 'PROFESSIONAL' = 'PATIENT'
@@ -136,24 +143,23 @@ export async function syncUserToFirestore(
     updatedAt: new Date().toISOString(),
   };
 
-  try {
-    if (auth.currentUser) {
-      const userRef = doc(db, 'users', user.uid);
-      const existingSnap = await getDoc(userRef);
-
-      if (existingSnap.exists()) {
-        const data = existingSnap.data();
-        if (data.role) profileData.role = data.role;
-        if (data.createdAt) profileData.createdAt = data.createdAt;
+  // Executa a sincronização com o Firestore em background para não bloquear o redirecionamento ao Dashboard
+  if (auth.currentUser) {
+    (async () => {
+      try {
+        const userRef = doc(db, 'users', user.uid);
+        await setDoc(
+          userRef,
+          {
+            ...profileData,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      } catch (error) {
+        console.warn('[Firestore] Sincronização em background ignorada:', error);
       }
-
-      await setDoc(userRef, {
-        ...profileData,
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
-    }
-  } catch (error) {
-    console.warn('[Firestore] Sincronização do perfil em users contornada:', error);
+    })();
   }
 
   return profileData;

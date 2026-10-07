@@ -166,8 +166,7 @@ export class AuthService {
       profileData = patient;
     } else {
       profileId = 'prof-' + Date.now();
-      // add professional
-      profileData = {
+      const prof = await db.createProfessional({
         id: profileId,
         userId,
         name: data.name,
@@ -176,7 +175,8 @@ export class AuthService {
         specialty: 'Medicina de Família',
         healthcareUnit: 'Clínica da Família',
         createdAt: new Date().toISOString(),
-      };
+      });
+      profileData = prof;
     }
 
     const payload: AuthenticatedUserPayload = {

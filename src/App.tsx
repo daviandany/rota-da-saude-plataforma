@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider } from './context/NotificationContext';
 import { ThemeProvider } from './context/ThemeContext';
@@ -32,7 +32,6 @@ const MainApp: React.FC = () => {
   const { user, loading } = useAuth();
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
 
   // Modals state
   const [isPressureModalOpen, setIsPressureModalOpen] = useState(false);
@@ -50,16 +49,21 @@ const MainApp: React.FC = () => {
 
   const triggerRefresh = () => setRefreshTrigger((prev) => prev + 1);
 
-  // Check if newly logged-in user needs onboarding / profile completion
-  React.useEffect(() => {
-    if (user && user.id) {
-      const isCompleted = localStorage.getItem('profile_onboarding_completed_' + user.id) === 'true';
-      const needsOnboarding = !isCompleted && (!user.profile?.age || user.profile?.gender === 'Não especificado');
-      if (needsOnboarding) {
-        setIsOnboardingOpen(true);
+  // Redireciona automaticamente para a rota /dashboard quando o login é confirmado
+  useEffect(() => {
+    if (!loading) {
+      if (user) {
+        if (window.location.pathname !== '/dashboard') {
+          window.history.replaceState({}, '', '/dashboard');
+        }
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        if (window.location.pathname === '/dashboard') {
+          window.history.replaceState({}, '', '/');
+        }
       }
     }
-  }, [user?.id]);
+  }, [user, loading]);
 
   if (loading) {
     return (
@@ -118,14 +122,11 @@ const MainApp: React.FC = () => {
         )}
       </WebLayout>
 
-      {/* Modal de Dados Cadastrais / Perfil do Usuário */}
+      {/* Modal de Dados Cadastrais / Perfil do Usuário (acessível pelo botão Meus Dados) */}
       <UserProfileModal
-        isOpen={isProfileModalOpen || isOnboardingOpen}
-        onClose={() => {
-          setIsProfileModalOpen(false);
-          setIsOnboardingOpen(false);
-        }}
-        isInitialOnboarding={isOnboardingOpen}
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        isInitialOnboarding={false}
       />
 
       {/* Central de Notificações */}

@@ -52,11 +52,12 @@ export const apiClient = axios.create({
   },
 });
 
-// Interceptor de Requisição: obtém o token de getAuth().currentUser?.getIdToken() (com fallback para o token do AuthContext) e adiciona o header Authorization: Bearer <token>
+// Interceptor de Requisição: anexa o token JWT armazenado no AuthContext (ou getAuth().currentUser?.getIdToken() como fallback) no header Authorization: Bearer <token>
 apiClient.interceptors.request.use(
   async (config) => {
-    const firebaseToken = await getAuth().currentUser?.getIdToken();
-    const token = firebaseToken || getAuthToken();
+    const localJwt = getAuthToken();
+    const firebaseToken = !localJwt ? await getAuth().currentUser?.getIdToken() : null;
+    const token = localJwt || firebaseToken;
 
     if (token) {
       config.headers = config.headers || {};

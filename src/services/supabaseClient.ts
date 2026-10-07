@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { getAuth } from 'firebase/auth';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import {
   BloodPressureRecord,
   GlucoseRecord,
@@ -9,21 +9,7 @@ import {
   Patient,
 } from '../types';
 
-const supabaseUrl =
-  process.env.EXPO_PUBLIC_SUPABASE_URL ||
-  (import.meta as any).env?.VITE_SUPABASE_URL ||
-  '';
-const supabaseAnonKey =
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
-  (import.meta as any).env?.VITE_SUPABASE_ANON_KEY ||
-  '';
-
-export const isSupabaseConfigured = Boolean(
-  supabaseUrl &&
-    supabaseAnonKey &&
-    supabaseUrl.startsWith('http') &&
-    !supabaseUrl.includes('your-project.supabase.co')
-);
+export { supabase, isSupabaseConfigured };
 
 /**
  * Helper para obter o UID alfanumérico atual do Firebase Auth (com fallback seguro para sessão ativa)
@@ -34,27 +20,6 @@ export function getCurrentFirebaseUid(fallbackUserId?: string): string {
   if (fallbackUserId) return fallbackUserId;
   return localStorage.getItem('firebase_uid_hint') || 'u-patient-maria';
 }
-
-// Cliente Supabase usando a Anon Key e enviando x-firebase-uid nos headers (compatível com RLS + Firebase Auth sem erro de assinatura JWT)
-export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-      global: {
-        fetch: async (url, options = {}) => {
-          const headers = new Headers(options.headers);
-          const currentUser = getAuth().currentUser;
-          const uid = currentUser?.uid || localStorage.getItem('firebase_uid_hint') || '';
-          if (uid) {
-            headers.set('x-firebase-uid', uid);
-          }
-          return fetch(url, { ...options, headers });
-        },
-      },
-    })
-  : null;
 
 // =========================================================================
 // FUNÇÕES ASSÍNCRONAS DE SALVAMENTO E LEITURA NO SUPABASE (COM TRY/CATCH)

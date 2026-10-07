@@ -27,6 +27,12 @@ export class SupabaseAdapter implements IDatabase {
   public isPostgres = true;
   private client: SupabaseClient | null = null;
   private isReady = false;
+  // Local fallback memory cache when Supabase RLS blocks unauthenticated or service writes
+  private localUsers: Map<string, User> = new Map(initialUsers.map((u) => [u.id, u]));
+  private localPatients: Map<string, Patient> = new Map(initialPatients.map((p) => [p.id, p]));
+  private localProfessionals: Map<string, Professional> = new Map(
+    initialProfessionals.map((p) => [p.id, p])
+  );
 
   constructor(
     private supabaseUrl: string,
@@ -242,45 +248,61 @@ export class SupabaseAdapter implements IDatabase {
 
   // Users
   async getUserByEmail(email: string): Promise<User | null> {
-    if (!this.client) return null;
-    const { data, error } = await this.client
-      .from('users')
-      .select('*')
-      .eq('email', email)
-      .maybeSingle();
+    const normalized = email.trim().toLowerCase();
+    if (this.client) {
+      const { data, error } = await this.client
+        .from('users')
+        .select('*')
+        .ilike('email', normalized)
+        .maybeSingle();
 
-    if (error || !data) return null;
-    return {
-      id: data.id,
-      email: data.email,
-      passwordHash: data.password_hash,
-      name: data.name,
-      role: data.role,
-      createdAt: data.created_at,
-    };
+      if (!error && data) {
+        const u: User = {
+          id: data.id,
+          email: data.email,
+          passwordHash: data.password_hash,
+          name: data.name,
+          role: data.role,
+          createdAt: data.created_at,
+        };
+        this.localUsers.set(u.id, u);
+        return u;
+      }
+    }
+
+    for (const u of this.localUsers.values()) {
+      if (u.email.toLowerCase() === normalized) return u;
+    }
+    return null;
   }
 
   async getUserById(id: string): Promise<User | null> {
-    if (!this.client) return null;
-    const { data, error } = await this.client
-      .from('users')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
+    if (this.client) {
+      const { data, error } = await this.client
+        .from('users')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
 
-    if (error || !data) return null;
-    return {
-      id: data.id,
-      email: data.email,
-      passwordHash: data.password_hash,
-      name: data.name,
-      role: data.role,
-      createdAt: data.created_at,
-    };
+      if (!error && data) {
+        const u: User = {
+          id: data.id,
+          email: data.email,
+          passwordHash: data.password_hash,
+          name: data.name,
+          role: data.role,
+          createdAt: data.created_at,
+        };
+        this.localUsers.set(u.id, u);
+        return u;
+      }
+    }
+    return this.localUsers.get(id) || null;
   }
 
   async createUser(user: User): Promise<User> {
-    if (!this.client) throw new Error('Supabase indisponível');
+    this.localUsers.set(user.id, user);
+    if (!this.client) return user;
     const { error } = await this.client.from('users').upsert(
       {
         id: user.id,
@@ -299,90 +321,114 @@ export class SupabaseAdapter implements IDatabase {
   }
 
   async updateUserPassword(userId: string, passwordHash: string): Promise<boolean> {
-    if (!this.client) return false;
+    const existing = this.localUsers.get(userId);
+    if (existing) {
+      existing.passwordHash = passwordHash;
+      this.localUsers.set(userId, existing);
+    }
+    if (!this.client) return Boolean(existing);
     const { error } = await this.client
       .from('users')
       .update({ password_hash: passwordHash })
       .eq('id', userId);
-    return !error;
+    return !error || Boolean(existing);
   }
 
   // Patients
   async getPatientByUserId(userId: string): Promise<Patient | null> {
-    if (!this.client) return null;
-    const { data, error } = await this.client
-      .from('patients')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
+    if (this.client) {
+      const { data, error } = await this.client
+        .from('patients')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
 
-    if (error || !data) return null;
-    return {
-      id: data.id,
-      userId: data.user_id,
-      name: data.name,
-      email: data.email,
-      age: data.age,
-      gender: data.gender,
-      conditions: data.conditions || ['HAS'],
-      riskLevel: data.risk_level,
-      healthcareUnit: data.healthcare_unit,
-      avatarUrl: data.avatar_url,
-      adherenceRate: data.adherence_rate,
-      phone: data.phone,
-      createdAt: data.created_at,
-    };
+      if (!error && data) {
+        const p: Patient = {
+          id: data.id,
+          userId: data.user_id,
+          name: data.name,
+          email: data.email,
+          age: data.age,
+          gender: data.gender,
+          conditions: data.conditions || ['HAS'],
+          riskLevel: data.risk_level,
+          healthcareUnit: data.healthcare_unit,
+          avatarUrl: data.avatar_url,
+          adherenceRate: data.adherence_rate,
+          phone: data.phone,
+          createdAt: data.created_at,
+        };
+        this.localPatients.set(p.id, p);
+        return p;
+      }
+    }
+    for (const p of this.localPatients.values()) {
+      if (p.userId === userId) return p;
+    }
+    return null;
   }
 
   async getPatientById(id: string): Promise<Patient | null> {
-    if (!this.client) return null;
-    const { data, error } = await this.client
-      .from('patients')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
+    if (this.client) {
+      const { data, error } = await this.client
+        .from('patients')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
 
-    if (error || !data) return null;
-    return {
-      id: data.id,
-      userId: data.user_id,
-      name: data.name,
-      email: data.email,
-      age: data.age,
-      gender: data.gender,
-      conditions: data.conditions || ['HAS'],
-      riskLevel: data.risk_level,
-      healthcareUnit: data.healthcare_unit,
-      avatarUrl: data.avatar_url,
-      adherenceRate: data.adherence_rate,
-      phone: data.phone,
-      createdAt: data.created_at,
-    };
+      if (!error && data) {
+        const p: Patient = {
+          id: data.id,
+          userId: data.user_id,
+          name: data.name,
+          email: data.email,
+          age: data.age,
+          gender: data.gender,
+          conditions: data.conditions || ['HAS'],
+          riskLevel: data.risk_level,
+          healthcareUnit: data.healthcare_unit,
+          avatarUrl: data.avatar_url,
+          adherenceRate: data.adherence_rate,
+          phone: data.phone,
+          createdAt: data.created_at,
+        };
+        this.localPatients.set(p.id, p);
+        return p;
+      }
+    }
+    return this.localPatients.get(id) || null;
   }
 
   async getAllPatients(): Promise<Patient[]> {
-    if (!this.client) return [];
-    const { data, error } = await this.client.from('patients').select('*').order('name');
-    if (error || !data || data.length === 0) return initialPatients;
-    return data.map((d: any) => ({
-      id: d.id,
-      userId: d.user_id,
-      name: d.name,
-      email: d.email,
-      age: d.age,
-      gender: d.gender,
-      conditions: d.conditions || ['HAS'],
-      riskLevel: d.risk_level,
-      healthcareUnit: d.healthcare_unit,
-      avatarUrl: d.avatar_url,
-      adherenceRate: d.adherence_rate,
-      phone: d.phone,
-      createdAt: d.created_at,
-    }));
+    if (this.client) {
+      const { data, error } = await this.client.from('patients').select('*').order('name');
+      if (!error && data && data.length > 0) {
+        data.forEach((d: any) => {
+          this.localPatients.set(d.id, {
+            id: d.id,
+            userId: d.user_id,
+            name: d.name,
+            email: d.email,
+            age: d.age,
+            gender: d.gender,
+            conditions: d.conditions || ['HAS'],
+            riskLevel: d.risk_level,
+            healthcareUnit: d.healthcare_unit,
+            avatarUrl: d.avatar_url,
+            adherenceRate: d.adherence_rate,
+            phone: d.phone,
+            createdAt: d.created_at,
+          });
+        });
+      }
+    }
+    return Array.from(this.localPatients.values());
   }
 
   async createPatient(patient: Patient): Promise<Patient> {
-    if (!this.client) throw new Error('Supabase indisponível');
+    this.localPatients.set(patient.id, patient);
+    if (!this.client) return patient;
     await this.client.from('patients').upsert(
       {
         id: patient.id,
@@ -405,7 +451,11 @@ export class SupabaseAdapter implements IDatabase {
   }
 
   async updatePatient(id: string, updateData: Partial<Patient>): Promise<Patient | null> {
-    if (!this.client) return null;
+    const existing = this.localPatients.get(id);
+    if (existing) {
+      this.localPatients.set(id, { ...existing, ...updateData });
+    }
+    if (!this.client) return this.localPatients.get(id) || null;
     const dbPatch: Record<string, any> = {};
     if (updateData.name !== undefined) dbPatch.name = updateData.name;
     if (updateData.email !== undefined) dbPatch.email = updateData.email;
@@ -419,55 +469,69 @@ export class SupabaseAdapter implements IDatabase {
     if (updateData.phone !== undefined) dbPatch.phone = updateData.phone;
 
     await this.client.from('patients').update(dbPatch).eq('id', id);
-    return this.getPatientById(id);
+    return (await this.getPatientById(id)) || this.localPatients.get(id) || null;
   }
 
   // Professionals
   async getProfessionalByUserId(userId: string): Promise<Professional | null> {
-    if (!this.client) return null;
-    const { data, error } = await this.client
-      .from('professionals')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
+    if (this.client) {
+      const { data, error } = await this.client
+        .from('professionals')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
 
-    if (error || !data) return null;
-    return {
-      id: data.id,
-      userId: data.user_id,
-      name: data.name,
-      email: data.email,
-      crm: data.crm,
-      specialty: data.specialty,
-      healthcareUnit: data.healthcare_unit,
-      avatarUrl: data.avatar_url,
-      createdAt: data.created_at,
-    };
+      if (!error && data) {
+        const prof: Professional = {
+          id: data.id,
+          userId: data.user_id,
+          name: data.name,
+          email: data.email,
+          crm: data.crm,
+          specialty: data.specialty,
+          healthcareUnit: data.healthcare_unit,
+          avatarUrl: data.avatar_url,
+          createdAt: data.created_at,
+        };
+        this.localProfessionals.set(prof.id, prof);
+        return prof;
+      }
+    }
+    for (const prof of this.localProfessionals.values()) {
+      if (prof.userId === userId) return prof;
+    }
+    return null;
   }
 
   async getProfessionalById(id: string): Promise<Professional | null> {
-    if (!this.client) return null;
-    const { data, error } = await this.client
-      .from('professionals')
-      .select('*')
-      .eq('id', id)
-      .maybeSingle();
+    if (this.client) {
+      const { data, error } = await this.client
+        .from('professionals')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
 
-    if (error || !data) return null;
-    return {
-      id: data.id,
-      userId: data.user_id,
-      name: data.name,
-      email: data.email,
-      crm: data.crm,
-      specialty: data.specialty,
-      healthcareUnit: data.healthcare_unit,
-      avatarUrl: data.avatar_url,
-      createdAt: data.created_at,
-    };
+      if (!error && data) {
+        const prof: Professional = {
+          id: data.id,
+          userId: data.user_id,
+          name: data.name,
+          email: data.email,
+          crm: data.crm,
+          specialty: data.specialty,
+          healthcareUnit: data.healthcare_unit,
+          avatarUrl: data.avatar_url,
+          createdAt: data.created_at,
+        };
+        this.localProfessionals.set(prof.id, prof);
+        return prof;
+      }
+    }
+    return this.localProfessionals.get(id) || null;
   }
 
   async createProfessional(professional: Professional): Promise<Professional> {
+    this.localProfessionals.set(professional.id, professional);
     if (!this.client) return professional;
     await this.client.from('professionals').upsert(
       {

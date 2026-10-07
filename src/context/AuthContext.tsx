@@ -83,25 +83,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     initAuth();
 
-    // Listen to Firebase Auth state
-    const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
+    // Listen to Firebase Auth state and auto-synchronize session if logged in via Firebase
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         setIsFirebaseConnected(true);
+        localStorage.setItem('firebase_uid_hint', fbUser.uid);
+
+        // Se o Firebase Auth confirmar o usuário e o estado local ainda não estiver populado, sincroniza e redireciona para a dashboard
+        if (!localStorage.getItem('token')) {
+          try {
+            const savedRole = (localStorage.getItem('preferred_role') as UserRole) || 'PATIENT';
+            const res = await api.loginGoogleFirebase({
+              uid: fbUser.uid,
+              email: fbUser.email || '',
+              name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Usuário Google',
+              photoURL: fbUser.photoURL || undefined,
+              role: savedRole,
+            });
+            setAuthToken(res.token);
+            setToken(res.token);
+            setUser(res.user);
+            if (window.location.pathname !== '/dashboard') {
+              window.history.replaceState({}, '', '/dashboard');
+            }
+          } catch (e) {
+            console.warn('[AuthContext] Auto-sync Firebase Auth:', e);
+          } finally {
+            setLoading(false);
+          }
+        }
       }
     });
 
     return () => unsubscribe();
   }, []);
 
+  const redirectToDashboard = () => {
+    if (typeof window !== 'undefined' && window.location.pathname !== '/dashboard') {
+      window.history.replaceState({}, '', '/dashboard');
+    }
+  };
+
   const login = async (email: string, pass: string, name?: string, role?: UserRole) => {
-    setLoading(true);
     try {
+      if (role) localStorage.setItem('preferred_role', role);
       const res = await api.login(email, pass, name, role);
       setAuthToken(res.token);
       setToken(res.token);
       setUser(res.user);
-    } finally {
-      setLoading(false);
+      redirectToDashboard();
+    } catch (err) {
+      throw err;
     }
   };
 
@@ -115,25 +147,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     crm?: string;
     conditions?: string[];
   }) => {
-    setLoading(true);
     try {
+      localStorage.setItem('preferred_role', payload.role);
       const res = await api.register(payload);
       setAuthToken(res.token);
       setToken(res.token);
       setUser(res.user);
-    } finally {
-      setLoading(false);
+      redirectToDashboard();
+    } catch (err) {
+      throw err;
     }
   };
 
   const loginGoogle = async (role: UserRole, emailHint?: string) => {
-    setLoading(true);
     try {
+      localStorage.setItem('preferred_role', role);
       // 1. Popup Google login + sync to Firestore users collection
       const { firebaseUser } = await signInWithGoogle(
         role === 'PROFESSIONAL' ? 'PROFESSIONAL' : 'PATIENT',
         emailHint
       );
+
+      localStorage.setItem('firebase_uid_hint', firebaseUser.uid);
 
       // 2. Synchronize with backend session
       const res = await api.loginGoogleFirebase({
@@ -148,6 +183,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(res.token);
       setUser(res.user);
       setIsFirebaseConnected(true);
+      redirectToDashboard();
 
       // Sincroniza dados iniciais clínicos no Firestore se autenticado
       if (FirestoreClinicalService.isAuthReady()) {
@@ -158,22 +194,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (err: any) {
       console.error('[AuthContext] Erro no login com Google / Firebase:', err);
       throw err;
-    } finally {
-      setLoading(false);
     }
   };
 
   const loginDemo = async (role: UserRole) => {
-    setLoading(true);
     try {
+      localStorage.setItem('preferred_role', role);
       const email = role === 'PATIENT' ? 'maria.silva@email.com' : 'carlos.mendes@saude.gov.br';
       const pass = role === 'PATIENT' ? 'paciente123' : 'medico123';
       const res = await api.login(email, pass);
       setAuthToken(res.token);
       setToken(res.token);
       setUser(res.user);
-    } finally {
-      setLoading(false);
+      redirectToDashboard();
+    } catch (err) {
+      throw err;
     }
   };
 
@@ -181,6 +216,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAuthToken(null);
     setToken(null);
     setUser(null);
+    if (typeof window !== 'undefined') {
+      window.history.replaceState({}, '', '/');
+    }
     await signOutFirebase();
   };
 
