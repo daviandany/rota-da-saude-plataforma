@@ -22,7 +22,15 @@ interface AuthContextType {
     conditions?: string[];
   }) => Promise<void>;
   loginDemo: (role: UserRole) => Promise<void>;
-  loginGoogle: (role: UserRole, emailHint?: string) => Promise<void>;
+  loginGoogle: (role: UserRole, emailHint?: string, customPatientName?: string) => Promise<void>;
+  switchPatientProfile: (options: {
+    patientId?: string;
+    newPatientName?: string;
+    age?: number;
+    gender?: string;
+    conditions?: string[];
+    role?: UserRole;
+  }) => Promise<void>;
   updateUserProfile: (data: any) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -161,7 +169,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const loginGoogle = async (role: UserRole, emailHint?: string) => {
+  const loginGoogle = async (role: UserRole, emailHint?: string, customPatientName?: string) => {
     try {
       localStorage.setItem('preferred_role', role);
       // 1. Popup Google login + sync to Firestore users collection
@@ -177,6 +185,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         uid: firebaseUser.uid,
         email: firebaseUser.email || '',
         name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuário Google',
+        customPatientName: customPatientName?.trim() || undefined,
         photoURL: firebaseUser.photoURL || undefined,
         role,
       });
@@ -194,8 +203,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         );
       }
     } catch (err: any) {
-      console.error('[AuthContext] Erro no login com Google / Firebase:', err);
+      const code = err?.code || '';
+      if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
+        console.warn('[AuthContext] Aviso no login com Google / Firebase:', err?.message || err);
+      }
       throw err;
+    }
+  };
+
+  const switchPatientProfile = async (options: {
+    patientId?: string;
+    newPatientName?: string;
+    age?: number;
+    gender?: string;
+    conditions?: string[];
+    role?: UserRole;
+  }) => {
+    setLoading(true);
+    try {
+      if (options.role) {
+        localStorage.setItem('preferred_role', options.role);
+      }
+      const res = await api.switchPatientProfile(options);
+      setAuthToken(res.token);
+      setToken(res.token);
+      setUser(res.user);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -254,6 +288,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         register,
         loginDemo,
         loginGoogle,
+        switchPatientProfile,
         updateUserProfile,
         logout,
         refreshUser,

@@ -26,14 +26,17 @@ import {
   Zap,
   Check,
   Building,
+  Pencil,
+  Trash2,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { Patient, ClinicalAlert, Appointment, Medication, BloodPressureRecord } from '../../types';
 import { useNotifications } from '../../context/NotificationContext';
 
 interface WebDoctorDashboardProps {
-  onOpenNewAppointment: () => void;
+  onOpenNewAppointment: (patientId?: string) => void;
   onOpenAddMedication: (patientId?: string) => void;
+  onEditMedication?: (med: Medication) => void;
   onOpenNotificationCenter: () => void;
   onOpenNewPatient?: () => void;
   onOpenQuickAlert?: () => void;
@@ -44,6 +47,7 @@ type DoctorWebTab = 'dashboard' | 'patients' | 'alerts' | 'appointments' | 'pres
 export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
   onOpenNewAppointment,
   onOpenAddMedication,
+  onEditMedication,
   onOpenNotificationCenter,
   onOpenNewPatient,
   onOpenQuickAlert,
@@ -55,6 +59,10 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const [allMedications, setAllMedications] = useState<Medication[]>([]);
+  const [prescriptionsSearch, setPrescriptionsSearch] = useState('');
+  const [selectedPrescriptionPatientFilter, setSelectedPrescriptionPatientFilter] = useState<string>('TODOS');
+  const [deletingMedId, setDeletingMedId] = useState<string | null>(null);
 
   // Tabs: 'dashboard' | 'patients' | 'alerts' | 'appointments' | 'prescriptions' | 'analytics'
   const [activeTab, setActiveTab] = useState<DoctorWebTab>('dashboard');
@@ -65,17 +73,19 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
   const fetchDoctorData = async () => {
     try {
       setLoading(true);
-      const [dashStats, pts, alrts, appts] = await Promise.all([
+      const [dashStats, pts, alrts, appts, meds] = await Promise.all([
         api.getDoctorDashboard(),
         api.getDoctorPatients(),
         api.getAlerts(),
         api.getAppointments(),
+        api.getMedications().catch(() => [] as Medication[]),
       ]);
 
       setStats(dashStats);
       setPatients(pts);
       setAlerts(alrts);
       setAppointments(appts);
+      setAllMedications(meds);
     } catch (e) {
       console.error('Failed to load doctor dashboard data:', e);
     } finally {
@@ -106,6 +116,27 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
     setTimeout(() => setAlertSimulationSuccess(null), 4000);
   };
 
+  const handleDeleteMedication = async (medId: string, medName: string) => {
+    if (!window.confirm(`Tem certeza que deseja excluir a prescrição de "${medName}"?`)) {
+      return;
+    }
+    setDeletingMedId(medId);
+    try {
+      await api.deleteMedication(medId);
+      setAllMedications((prev) => prev.filter((m) => m.id !== medId));
+      if (selectedPatient && selectedPatient.medications) {
+        setSelectedPatient({
+          ...selectedPatient,
+          medications: selectedPatient.medications.filter((m: Medication) => m.id !== medId),
+        });
+      }
+    } catch (e: any) {
+      alert(e.message || 'Erro ao excluir medicamento.');
+    } finally {
+      setDeletingMedId(null);
+    }
+  };
+
   const filteredPatients = patients.filter((p) => {
     const matchesSearch =
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -126,7 +157,7 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
 
           <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={onOpenNewAppointment}
+              onClick={() => onOpenNewAppointment()}
               className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/80 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs active:scale-95"
               title="Agendar nova consulta médica na UBS"
             >
@@ -334,9 +365,9 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
                 <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-1">
                   <span>{selectedPatient.patient.age} anos</span>
                   <span aria-hidden="true">·</span>
-                  <span>{selectedPatient.patient.gender === 'F' ? 'Feminino' : 'Masculino'}</span>
+                  <span>{selectedPatient.patient.gender || 'Não informado'}</span>
                   <span aria-hidden="true">·</span>
-                  <span>Cartão SUS: {selectedPatient.patient.id.slice(0, 8)}</span>
+                  <span>ID: {selectedPatient.patient.id}</span>
                 </div>
               </div>
             </div>
@@ -350,7 +381,7 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
                 <span>Prescrever Remédio</span>
               </button>
               <button
-                onClick={onOpenNewAppointment}
+                onClick={() => onOpenNewAppointment(selectedPatient.patient.id)}
                 className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800 text-xs font-bold rounded-xl transition flex items-center gap-1.5"
               >
                 <Calendar className="w-4 h-4" />
@@ -504,30 +535,56 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
                     (selectedPatient.medications || []).map((med: Medication) => {
                       const isDoc =
                         med.addedByRole === 'PROFESSIONAL' ||
-                        Boolean(med.prescribedBy) ||
+                        (Boolean(med.prescribedBy) && med.prescribedBy !== 'Paciente') ||
                         ['med-1', 'med-2', 'med-3'].includes(med.id);
                       return (
                         <div
                           key={med.id}
                           className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 text-xs flex items-center justify-between gap-2"
                         >
-                          <div>
-                            <div className="font-bold text-slate-900 dark:text-white">
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-slate-900 dark:text-white truncate">
                               {med.name} {med.dosage}
                             </div>
                             <div className="text-[11px] text-slate-500 dark:text-slate-400">
                               {med.frequency} · {(med.reminderTimes || []).join(', ')}
                             </div>
+                            {med.notes && (
+                              <div className="text-[10px] text-slate-400 italic truncate mt-0.5">
+                                {med.notes}
+                              </div>
+                            )}
                           </div>
-                          <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
-                              isDoc
-                                ? 'bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
-                                : 'bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800'
-                            }`}
-                          >
-                            {isDoc ? 'Médico' : 'Paciente'}
-                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                isDoc
+                                  ? 'bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
+                                  : 'bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800'
+                              }`}
+                            >
+                              {isDoc ? 'Médico' : 'Paciente'}
+                            </span>
+                            {onEditMedication && (
+                              <button
+                                type="button"
+                                onClick={() => onEditMedication(med)}
+                                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg transition cursor-pointer"
+                                title="Editar medicamento"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              disabled={deletingMedId === med.id}
+                              onClick={() => handleDeleteMedication(med.id, med.name)}
+                              className="p-1.5 hover:bg-rose-50 dark:hover:bg-rose-950 text-rose-600 dark:text-rose-400 rounded-lg transition disabled:opacity-50 cursor-pointer"
+                              title="Excluir medicamento"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       );
                     })
@@ -743,7 +800,7 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
 
                   <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
                     <button
-                      onClick={onOpenNewAppointment}
+                      onClick={() => onOpenNewAppointment()}
                       className="w-full py-2.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5"
                     >
                       <PlusCircle className="w-4 h-4" />
@@ -836,12 +893,12 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
                             />
                             <div>
                               <div className="font-bold text-slate-900 dark:text-white">{pt.name}</div>
-                              <div className="text-[10px] text-slate-400">Cartão SUS: {pt.id.slice(0, 8)}</div>
+                              <div className="text-[10px] text-slate-400">{pt.email} · ID: {pt.id}</div>
                             </div>
                           </div>
                         </td>
                         <td className="py-3 px-4 text-slate-600 dark:text-slate-300 font-medium">
-                          {pt.age} anos · {pt.gender === 'F' ? 'F' : 'M'}
+                          {pt.age} anos · {pt.gender?.startsWith('F') ? 'Feminino' : pt.gender?.startsWith('M') ? 'Masculino' : pt.gender || 'N/I'}
                         </td>
                         <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
                           {pt.conditions?.join(', ') || 'Hipertensão Arterial'}
@@ -949,7 +1006,7 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
                         Prontuário
                       </button>
                       <button
-                        onClick={onOpenNewAppointment}
+                        onClick={() => onOpenNewAppointment(al.patientId)}
                         className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition"
                       >
                         Agendar Encaixe
@@ -977,7 +1034,7 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
                 </div>
 
                 <button
-                  onClick={onOpenNewAppointment}
+                  onClick={() => onOpenNewAppointment()}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
                 >
                   <PlusCircle className="w-4 h-4" />
@@ -998,7 +1055,7 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
                       A agenda ambulatorial da unidade está sem atendimentos previstos. Clique no botão acima para agendar um paciente.
                     </p>
                     <button
-                      onClick={onOpenNewAppointment}
+                      onClick={() => onOpenNewAppointment()}
                       className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-xs transition"
                     >
                       <PlusCircle className="w-4 h-4" />
@@ -1049,55 +1106,264 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
           )}
 
           {/* ========================================================================= */}
-          {/* ABA 5: FARMÁCIA & PRESCRIÇÕES SUS (RENAME)                                  */}
+          {/* ABA 5: FARMÁCIA & PRESCRIÇÕES SUS (ORGANIZADO POR PACIENTE COM EDITAR/EXCLUIR) */}
           {/* ========================================================================= */}
           {activeTab === 'prescriptions' && (
             <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-xs space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-5 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-5 border-b border-slate-100 dark:border-slate-800">
                 <div>
-                  <h2 className="text-base font-black text-slate-900 dark:text-white">
-                    Formulário RENAME e Prescrições da Equipe
+                  <h2 className="text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                    <Pill className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                    <span>Medicamentos Prescritos e Farmácia SUS ({allMedications.length})</span>
                   </h2>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Relação Nacional de Medicamentos Essenciais disponíveis na Farmácia Básica Municipal.
+                    Visão organizada de todas as prescrições ativas, vinculadas a cada paciente, com opções de edição e exclusão.
                   </p>
                 </div>
 
-                <button
-                  onClick={() => onOpenAddMedication()}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5"
-                >
-                  <PlusCircle className="w-4 h-4" />
-                  <span>Emitir Nova Prescrição</span>
-                </button>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <button
+                    onClick={() => onOpenAddMedication()}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    <span>+ Prescrever Medicamento</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {[
-                  { name: 'Losartana Potássica', dose: '50 mg', cat: 'Anti-hipertensivo (BRA)', estoque: 'Disponível na UBS' },
-                  { name: 'Hidroclorotiazida', dose: '25 mg', cat: 'Diurético Tiazídico', estoque: 'Disponível na UBS' },
-                  { name: 'Enalapril Maleato', dose: '10 mg / 20 mg', cat: 'Anti-hipertensivo (iECA)', estoque: 'Disponível na UBS' },
-                  { name: 'Anlodipino Besilato', dose: '5 mg', cat: 'Bloqueador Canal Cálcio', estoque: 'Disponível na UBS' },
-                  { name: 'Metformina Cloridrato', dose: '500 mg / 850 mg', cat: 'Antidiabético Oral', estoque: 'Disponível na UBS' },
-                  { name: 'Glibenclamida', dose: '5 mg', cat: 'Sulfonilureia', estoque: 'Disponível na UBS' },
-                ].map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-2"
+              {/* Filtros e Busca de Prescrições */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    value={prescriptionsSearch}
+                    onChange={(e) => setPrescriptionsSearch(e.target.value)}
+                    placeholder="Buscar por medicamento, paciente, dosagem..."
+                    className="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-bold text-slate-600 dark:text-slate-400 whitespace-nowrap">
+                    Filtrar por Paciente:
+                  </label>
+                  <select
+                    value={selectedPrescriptionPatientFilter}
+                    onChange={(e) => setSelectedPrescriptionPatientFilter(e.target.value)}
+                    className="px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-800 dark:text-slate-200 outline-none"
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-slate-900 dark:text-white">{item.name}</span>
+                    <option value="TODOS">Todos os Pacientes ({patients.length})</option>
+                    {patients.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} (#{p.id.replace(/^pat-/, '').slice(0, 6).toUpperCase()})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Tabela Organizada de Medicamentos Prescritos e Para Quem */}
+              {(() => {
+                const filtered = allMedications.filter((med) => {
+                  const patient = patients.find((p) => p.id === med.patientId);
+                  const patientName = med.patientName || patient?.name || '';
+                  const query = prescriptionsSearch.trim().toLowerCase();
+                  const matchesSearch =
+                    !query ||
+                    med.name.toLowerCase().includes(query) ||
+                    med.dosage.toLowerCase().includes(query) ||
+                    (med.notes && med.notes.toLowerCase().includes(query)) ||
+                    patientName.toLowerCase().includes(query);
+
+                  const matchesPatient =
+                    selectedPrescriptionPatientFilter === 'TODOS' ||
+                    med.patientId === selectedPrescriptionPatientFilter;
+
+                  return matchesSearch && matchesPatient;
+                });
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="p-8 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-700/80 text-center space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
+                        <Pill className="w-6 h-6" />
+                      </div>
+                      <div className="text-sm font-bold text-slate-800 dark:text-white">
+                        Nenhum medicamento encontrado
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                        Não há prescrições correspondentes aos filtros selecionados. Clique no botão acima para prescrever um medicamento a um paciente.
+                      </p>
+                      <button
+                        onClick={() => onOpenAddMedication()}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
+                      >
+                        <PlusCircle className="w-4 h-4" />
+                        <span>Prescrever Agora</span>
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="overflow-x-auto rounded-2xl border border-slate-200/80 dark:border-slate-800">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 font-bold">
+                        <tr className="border-b border-slate-200/80 dark:border-slate-800">
+                          <th className="py-3 px-4">Medicamento / Dosagem</th>
+                          <th className="py-3 px-4">Para Quem (Paciente SUS)</th>
+                          <th className="py-3 px-4">Posologia / Frequência</th>
+                          <th className="py-3 px-4">Horários Lembrete</th>
+                          <th className="py-3 px-4">Origem</th>
+                          <th className="py-3 px-4 text-right">Ações Clínicas</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {filtered.map((med) => {
+                          const patient = patients.find((p) => p.id === med.patientId);
+                          const patientDisplayName = med.patientName || patient?.name || 'Paciente SUS';
+                          const patientCode = (med.patientId || '').replace(/^pat-/, '').slice(0, 8).toUpperCase();
+                          const isDoc =
+                            med.addedByRole === 'PROFESSIONAL' ||
+                            (Boolean(med.prescribedBy) && med.prescribedBy !== 'Paciente') ||
+                            ['med-1', 'med-2', 'med-3'].includes(med.id);
+
+                          return (
+                            <tr key={med.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition">
+                              {/* Medicamento */}
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0">
+                                    <Pill className="w-4 h-4" />
+                                  </div>
+                                  <div>
+                                    <div className="font-bold text-slate-900 dark:text-white">
+                                      {med.name}
+                                    </div>
+                                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
+                                      {med.dosage}
+                                    </span>
+                                    {med.notes && (
+                                      <p className="text-[10px] text-slate-400 italic max-w-xs truncate mt-0.5">
+                                        {med.notes}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Para Quem (Paciente) */}
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-2">
+                                  <div>
+                                    <div className="font-bold text-slate-800 dark:text-slate-200">
+                                      {patientDisplayName}
+                                    </div>
+                                    <div className="text-[10px] font-mono text-slate-400">
+                                      ID: #{patientCode || 'PACIENTE'} {patient?.email ? `· ${patient.email}` : ''}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Posologia */}
+                              <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-medium">
+                                {med.frequency}
+                              </td>
+
+                              {/* Horários */}
+                              <td className="py-3 px-4">
+                                <div className="flex flex-wrap gap-1">
+                                  {(med.reminderTimes || []).map((t, idx) => (
+                                    <span
+                                      key={idx}
+                                      className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                                    >
+                                      {t}
+                                    </span>
+                                  ))}
+                                </div>
+                              </td>
+
+                              {/* Origem */}
+                              <td className="py-3 px-4">
+                                <span
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    isDoc
+                                      ? 'bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
+                                      : 'bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800'
+                                  }`}
+                                >
+                                  {isDoc ? <Stethoscope className="w-3 h-3" /> : <Pill className="w-3 h-3" />}
+                                  <span>{isDoc ? 'Médico (ESF)' : 'Paciente'}</span>
+                                </span>
+                              </td>
+
+                              {/* Ações: Editar e Excluir */}
+                              <td className="py-3 px-4 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {onEditMedication && (
+                                    <button
+                                      type="button"
+                                      onClick={() => onEditMedication(med)}
+                                      className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/70 dark:hover:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                                      title="Editar medicamento"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                      <span>Editar</span>
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    disabled={deletingMedId === med.id}
+                                    onClick={() => handleDeleteMedication(med.id, med.name)}
+                                    className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/70 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                    title="Excluir medicamento"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>Excluir</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+
+              {/* Relação RENAME em Destaque Auxiliar */}
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
+                  Padronização Farmácia Básica Municipal (RENAME SUS):
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {[
+                    { name: 'Losartana Potássica', dose: '50 mg', cat: 'Anti-hipertensivo (BRA)' },
+                    { name: 'Hidroclorotiazida', dose: '25 mg', cat: 'Diurético Tiazídico' },
+                    { name: 'Enalapril Maleato', dose: '10 mg / 20 mg', cat: 'Anti-hipertensivo (iECA)' },
+                    { name: 'Anlodipino Besilato', dose: '5 mg', cat: 'Bloqueador Canal Cálcio' },
+                    { name: 'Metformina Cloridrato', dose: '500 mg / 850 mg', cat: 'Antidiabético Oral' },
+                    { name: 'Glibenclamida', dose: '5 mg', cat: 'Sulfonilureia' },
+                  ].map((item, idx) => (
+                    <div
+                      key={idx}
+                      className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/70 dark:border-slate-700/70 flex items-center justify-between"
+                    >
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{item.name}</span>
+                        <div className="text-[10px] text-slate-400">{item.cat}</div>
+                      </div>
                       <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded">
                         {item.dose}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400">{item.cat}</p>
-                    <div className="text-[11px] text-teal-600 dark:text-teal-400 font-bold flex items-center gap-1">
-                      <Check className="w-3 h-3" />
-                      <span>{item.estoque}</span>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
           )}

@@ -43,6 +43,7 @@ apiRouter.post('/auth/register', authController.register);
 apiRouter.post('/auth/google-firebase', authController.googleFirebaseLogin);
 apiRouter.get('/auth/me', authMiddleware, authController.getMe);
 apiRouter.put('/auth/profile', authMiddleware, authController.updateProfile);
+apiRouter.post('/auth/switch-patient', authMiddleware, authController.switchPatient);
 apiRouter.post('/auth/forgot-password', authController.forgotPassword);
 apiRouter.post('/auth/verify-reset-token', authController.verifyResetToken);
 apiRouter.post('/auth/reset-password', authController.resetPassword);
@@ -57,6 +58,7 @@ apiRouter.get('/clinical/history', authMiddleware, clinicalController.getHistory
 apiRouter.get('/medications', authMiddleware, medicationController.getMedications);
 apiRouter.post('/medications', authMiddleware, medicationController.addMedication);
 apiRouter.put('/medications/:id', authMiddleware, medicationController.updateMedication);
+apiRouter.delete('/medications/:id', authMiddleware, medicationController.deleteMedication);
 apiRouter.patch('/medications/:id/status', authMiddleware, medicationController.updateStatus);
 
 // Appointments
@@ -65,11 +67,13 @@ apiRouter.post('/appointments', authMiddleware, appointmentController.createAppo
 
 // Alerts
 apiRouter.get('/alerts', authMiddleware, alertController.getAlerts);
+apiRouter.post('/alerts', authMiddleware, alertController.createAlert);
 apiRouter.post('/alerts/:id/resolve', authMiddleware, alertController.resolve);
 
 // Doctor & Clinical Staff Portal
 apiRouter.get('/doctor/dashboard', authMiddleware, doctorController.getDashboard);
 apiRouter.get('/doctor/patients', authMiddleware, doctorController.getPatients);
+apiRouter.post('/doctor/patients', authMiddleware, doctorController.createPatient);
 apiRouter.get('/doctor/patients/:patientId', authMiddleware, doctorController.getPatientProfile);
 
 // Educational & Guidance (Mitos e Verdades)

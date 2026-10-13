@@ -77,6 +77,8 @@ export interface GlucoseRecord {
 export interface Medication {
   id: string;
   patientId: string;
+  patientName?: string;
+  patientEmail?: string;
   name: string;
   dosage: string;
   frequency: string;

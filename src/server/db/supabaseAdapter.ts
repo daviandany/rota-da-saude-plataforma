@@ -33,11 +33,21 @@ export class SupabaseAdapter implements IDatabase {
   private localProfessionals: Map<string, Professional> = new Map(
     initialProfessionals.map((p) => [p.id, p])
   );
-  private localBP: Map<string, BloodPressureRecord> = new Map();
-  private localGlucose: Map<string, GlucoseRecord> = new Map();
-  private localMedications: Map<string, Medication> = new Map();
-  private localAppointments: Map<string, Appointment> = new Map();
-  private localAlerts: Map<string, ClinicalAlert> = new Map();
+  private localBP: Map<string, BloodPressureRecord> = new Map(
+    initialBloodPressure.map((bp) => [bp.id, bp])
+  );
+  private localGlucose: Map<string, GlucoseRecord> = new Map(
+    initialGlucose.map((g) => [g.id, g])
+  );
+  private localMedications: Map<string, Medication> = new Map(
+    initialMedications.map((m) => [m.id, m])
+  );
+  private localAppointments: Map<string, Appointment> = new Map(
+    initialAppointments.map((a) => [a.id, a])
+  );
+  private localAlerts: Map<string, ClinicalAlert> = new Map(
+    initialAlerts.map((al) => [al.id, al])
+  );
 
   constructor(
     private supabaseUrl: string,
@@ -259,16 +269,17 @@ export class SupabaseAdapter implements IDatabase {
         .from('users')
         .select('*')
         .ilike('email', normalized)
-        .maybeSingle();
+        .limit(1);
 
-      if (!error && data) {
+      if (!error && data && data.length > 0) {
+        const row = data[0];
         const u: User = {
-          id: data.id,
-          email: data.email,
-          passwordHash: data.password_hash,
-          name: data.name,
-          role: data.role,
-          createdAt: data.created_at,
+          id: row.id,
+          email: row.email,
+          passwordHash: row.password_hash,
+          name: row.name,
+          role: row.role,
+          createdAt: row.created_at,
         };
         this.localUsers.set(u.id, u);
         return u;
@@ -346,23 +357,25 @@ export class SupabaseAdapter implements IDatabase {
         .from('patients')
         .select('*')
         .eq('user_id', userId)
-        .maybeSingle();
+        .order('created_at', { ascending: false })
+        .limit(1);
 
-      if (!error && data) {
+      if (!error && data && data.length > 0) {
+        const row = data[0];
         const p: Patient = {
-          id: data.id,
-          userId: data.user_id,
-          name: data.name,
-          email: data.email,
-          age: data.age,
-          gender: data.gender,
-          conditions: data.conditions || ['HAS'],
-          riskLevel: data.risk_level,
-          healthcareUnit: data.healthcare_unit,
-          avatarUrl: data.avatar_url,
-          adherenceRate: data.adherence_rate,
-          phone: data.phone,
-          createdAt: data.created_at,
+          id: row.id,
+          userId: row.user_id,
+          name: row.name,
+          email: row.email,
+          age: row.age,
+          gender: row.gender,
+          conditions: row.conditions || ['HAS'],
+          riskLevel: row.risk_level,
+          healthcareUnit: row.healthcare_unit,
+          avatarUrl: row.avatar_url,
+          adherenceRate: row.adherence_rate,
+          phone: row.phone,
+          createdAt: row.created_at,
         };
         this.localPatients.set(p.id, p);
         return p;
@@ -693,25 +706,34 @@ export class SupabaseAdapter implements IDatabase {
   }
 
   async addMedication(medication: Medication): Promise<Medication> {
-    this.localMedications.set(medication.id, medication);
-    if (!this.client) return medication;
+    const notesWithMeta =
+      medication.addedByRole === 'PROFESSIONAL' &&
+      !(medication.notes || '').includes('[Prescrito pelo Médico]')
+        ? `${medication.notes ? medication.notes + ' ' : ''}[Prescrito pelo Médico]`
+        : medication.notes;
+    const enriched: Medication = {
+      ...medication,
+      notes: notesWithMeta,
+    };
+    this.localMedications.set(enriched.id, enriched);
+    if (!this.client) return enriched;
     await this.client.from('medications').upsert(
       {
-        id: medication.id,
-        user_id: medication.patientId,
-        patient_id: medication.patientId,
-        name: medication.name,
-        dosage: medication.dosage,
-        frequency: medication.frequency,
-        reminder_times: medication.reminderTimes,
-        status: medication.status,
-        notes: medication.notes,
-        is_active: medication.status === 'ATIVO',
-        created_at: medication.createdAt,
+        id: enriched.id,
+        user_id: enriched.patientId,
+        patient_id: enriched.patientId,
+        name: enriched.name,
+        dosage: enriched.dosage,
+        frequency: enriched.frequency,
+        reminder_times: enriched.reminderTimes,
+        status: enriched.status,
+        notes: enriched.notes,
+        is_active: enriched.status === 'ATIVO',
+        created_at: enriched.createdAt,
       },
       { onConflict: 'id' }
     );
-    return medication;
+    return enriched;
   }
 
   async updateMedication(id: string, data: Partial<Medication>): Promise<Medication | null> {
@@ -755,6 +777,39 @@ export class SupabaseAdapter implements IDatabase {
     };
     this.localMedications.set(result.id, result);
     return result;
+  }
+
+  async getAllMedications(): Promise<Medication[]> {
+    if (this.client) {
+      const { data, error } = await this.client.from('medications').select('*');
+      if (!error && data) {
+        data.forEach((d: any) => {
+          const prev = this.localMedications.get(d.id);
+          this.localMedications.set(d.id, {
+            id: d.id,
+            patientId: d.patient_id,
+            name: d.name,
+            dosage: d.dosage,
+            frequency: d.frequency,
+            reminderTimes: d.reminder_times || ['08:00'],
+            status: (d.status || (d.is_active ? 'ATIVO' : 'SUSPENSO')) as 'ATIVO' | 'SUSPENSO' | 'CONCLUIDO',
+            notes: d.notes,
+            addedByRole: d.added_by_role || prev?.addedByRole || (d.notes?.includes('[Prescrito pelo Médico]') ? 'PROFESSIONAL' : 'PATIENT'),
+            prescribedBy: d.prescribed_by || prev?.prescribedBy,
+            createdAt: d.created_at,
+          });
+        });
+      }
+    }
+    return Array.from(this.localMedications.values());
+  }
+
+  async deleteMedication(id: string): Promise<boolean> {
+    const existed = this.localMedications.delete(id);
+    if (this.client) {
+      await this.client.from('medications').delete().eq('id', id);
+    }
+    return existed;
   }
 
   // Appointments

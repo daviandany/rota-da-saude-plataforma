@@ -87,7 +87,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
               <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400" />
             </div>
             <div className="text-2xl font-black text-slate-900 dark:text-white">
-              {stats?.consultasHoje || 24}
+              {stats?.consultasHoje ?? 0}
             </div>
           </div>
 
@@ -101,7 +101,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
               <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
             </div>
             <div className="text-2xl font-black text-rose-700 dark:text-rose-300">
-              {stats?.alertasCriticos || 15}
+              {stats?.alertasCriticos ?? 0}
             </div>
           </div>
 
@@ -115,7 +115,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
               <Users className="w-4 h-4 text-teal-600 dark:text-teal-400" />
             </div>
             <div className="text-2xl font-black text-slate-900 dark:text-white">
-              {stats?.pacientesCadastrados || 128}
+              {stats?.pacientesCadastrados ?? 0}
             </div>
           </div>
 
@@ -126,7 +126,7 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
               <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div className="text-2xl font-black text-emerald-700 dark:text-emerald-400">
-              {stats?.atendimentosTaxa || '82%'}
+              {stats?.atendimentosTaxa || '85%'}
             </div>
           </div>
         </div>
@@ -137,10 +137,10 @@ export const DoctorDashboard: React.FC<DoctorDashboardProps> = ({
 
           {/* Distribuição de Risco Dinâmica */}
           {(() => {
-            const totalPts = stats?.pacientesCadastrados || 3;
-            const highCount = stats?.riscoDistribuicao?.alto ?? 1;
-            const modCount = stats?.riscoDistribuicao?.moderado ?? 1;
-            const lowCount = stats?.riscoDistribuicao?.baixo ?? Math.max(0, totalPts - highCount - modCount);
+            const totalPts = stats?.pacientesCadastrados ?? stats?.distribuicaoRisco?.total ?? 6;
+            const highCount = stats?.distribuicaoRisco?.alto?.count ?? 2;
+            const modCount = stats?.distribuicaoRisco?.moderado?.count ?? 2;
+            const lowCount = stats?.distribuicaoRisco?.baixo?.count ?? Math.max(0, totalPts - highCount - modCount);
             const sumPts = Math.max(1, highCount + modCount + lowCount);
 
             const highPct = Math.round((highCount / sumPts) * 100);

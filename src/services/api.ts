@@ -19,11 +19,13 @@ import {
   saveMedicationToSupabase,
   saveAppointmentToSupabase,
   saveUserProfileToSupabase,
+  saveClinicalAlertToSupabase,
   fetchBloodPressureFromSupabase,
   fetchGlucoseFromSupabase,
   fetchMedicationsFromSupabase,
   fetchAppointmentsFromSupabase,
   fetchPatientsFromSupabase,
+  fetchAlertsFromSupabase,
 } from './supabaseClient';
 
 const API_BASE = '/api';
@@ -177,10 +179,30 @@ export const api = {
     uid: string;
     email: string;
     name: string;
+    customPatientName?: string;
+    patientId?: string;
     photoURL?: string;
     role: string;
   }): Promise<{ token: string; user: User }> {
     const { data } = await apiClient.post('/auth/google-firebase', payload);
+    if (data.token) {
+      setAuthToken(data.token);
+    }
+    if (data.user) {
+      setActiveSessionUser(data.user);
+    }
+    return data;
+  },
+
+  async switchPatientProfile(payload: {
+    patientId?: string;
+    newPatientName?: string;
+    age?: number;
+    gender?: string;
+    conditions?: string[];
+    role?: string;
+  }): Promise<{ token: string; user: User }> {
+    const { data } = await apiClient.post('/auth/switch-patient', payload);
     if (data.token) {
       setAuthToken(data.token);
     }
@@ -397,12 +419,15 @@ export const api = {
 
   async addMedication(payload: {
     patientId?: string;
+    patientName?: string;
+    patientEmail?: string;
     name: string;
     dosage: string;
     frequency: string;
     reminderTimes: string[];
     notes?: string;
     addedByRole?: string;
+    prescribedBy?: string;
   }): Promise<Medication> {
     const resolvedPatientId = getActivePatientId(payload.patientId);
     const activeRole = localStorage.getItem('active_user_role') || payload.addedByRole || 'PATIENT';
@@ -474,6 +499,16 @@ export const api = {
     }
 
     return med;
+  },
+
+  async deleteMedication(id: string): Promise<boolean> {
+    const { data } = await apiClient.delete(`/medications/${id}`);
+    try {
+      await FirestoreClinicalService.deleteMedication?.(id);
+    } catch (e) {
+      // Ignora erro opcional de sync
+    }
+    return data.success ?? true;
   },
 
   async updateMedicationStatus(id: string, status: string): Promise<Medication> {
@@ -576,7 +611,85 @@ export const api = {
         ...(severity ? { severity } : {}),
       },
     });
-    return data.data;
+    let list: ClinicalAlert[] = data.data || [];
+
+    try {
+      const supaAlerts = await fetchAlertsFromSupabase(patientId);
+      if (supaAlerts.length > 0) {
+        const map = new Map<string, ClinicalAlert>();
+        list.forEach((a) => map.set(a.id, a));
+        supaAlerts
+          .filter((a) => !patientId || a.patientId === patientId)
+          .forEach((a) => map.set(a.id, a));
+        list = Array.from(map.values()).sort(
+          (a, b) => new Date(b.triggeredAt).getTime() - new Date(a.triggeredAt).getTime()
+        );
+      }
+    } catch {
+      // Ignora erro opcional
+    }
+
+    try {
+      if (FirestoreClinicalService.isAuthReady()) {
+        const fsAlerts = await FirestoreClinicalService.getClinicalAlerts(patientId);
+        if (fsAlerts && fsAlerts.length > 0) {
+          const map = new Map<string, ClinicalAlert>();
+          list.forEach((a) => map.set(a.id, a));
+          fsAlerts
+            .filter((a) => !patientId || a.patientId === patientId)
+            .forEach((a) => map.set(a.id, a));
+          list = Array.from(map.values()).sort(
+            (a, b) => new Date(b.triggeredAt).getTime() - new Date(a.triggeredAt).getTime()
+          );
+        }
+      }
+    } catch {
+      // Ignora erro opcional
+    }
+
+    if (severity && severity !== 'TODOS') {
+      const sevNorm = severity.toUpperCase();
+      list = list.filter((a) => a.severity === sevNorm);
+    }
+
+    return list;
+  },
+
+  async createAlert(payload: {
+    patientId: string;
+    patientName: string;
+    severity: 'CRITICO' | 'ATENCAO' | 'INFO';
+    title: string;
+    message: string;
+    valueRecorded?: string;
+    metricType?: 'PRESSURE' | 'GLUCOSE' | 'MEDICATION';
+  }): Promise<ClinicalAlert> {
+    const { data } = await apiClient.post('/alerts', payload);
+    const alert = data.data;
+
+    try {
+      await saveClinicalAlertToSupabase({
+        id: alert.id,
+        patientId: alert.patientId,
+        patientName: alert.patientName,
+        severity: alert.severity,
+        title: alert.title,
+        message: alert.message,
+        valueRecorded: alert.valueRecorded,
+        metricType: alert.metricType === 'MEDICATION' ? 'GENERAL' : alert.metricType,
+        fallbackUserId: localStorage.getItem('active_user_id') || alert.patientId,
+      });
+    } catch (e) {
+      console.warn('[Supabase] Alerta salvo localmente:', e);
+    }
+
+    try {
+      await FirestoreClinicalService.createClinicalAlert(alert);
+    } catch (e) {
+      console.warn('[Firestore] Alerta salvo localmente:', e);
+    }
+
+    return alert;
   },
 
   async resolveAlert(id: string): Promise<boolean> {
@@ -615,6 +728,22 @@ export const api = {
     });
     let patients: Patient[] = data.data || [];
 
+    // Mescla pacientes persistidos no Supabase
+    try {
+      const supaPatients = await fetchPatientsFromSupabase();
+      if (supaPatients && supaPatients.length > 0) {
+        const map = new Map<string, Patient>();
+        patients.forEach((p) => map.set(p.id, p));
+        supaPatients.forEach((sp) => {
+          const existing = map.get(sp.id);
+          map.set(sp.id, { ...existing, ...sp, latestBP: existing?.latestBP || sp.latestBP, latestGlucose: existing?.latestGlucose || sp.latestGlucose });
+        });
+        patients = Array.from(map.values());
+      }
+    } catch {
+      // Ignora erro se sem tabela no Supabase
+    }
+
     // Mescla pacientes persistidos no Firestore se autenticado
     try {
       if (FirestoreClinicalService.isAuthReady()) {
@@ -630,7 +759,65 @@ export const api = {
       // Ignora erro se sem permissão ou offline
     }
 
+    if (search) {
+      const q = search.toLowerCase();
+      patients = patients.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          (p.conditions && p.conditions.some((c) => c.toLowerCase().includes(q))) ||
+          (p.email && p.email.toLowerCase().includes(q))
+      );
+    }
+
+    if (risk && risk !== 'TODOS') {
+      const riskNorm = risk.toUpperCase();
+      patients = patients.filter((p) => p.riskLevel === riskNorm);
+    }
+
     return patients;
+  },
+
+  async createDoctorPatient(payload: {
+    name: string;
+    email?: string;
+    age?: number;
+    gender?: string;
+    conditions?: string[];
+    riskLevel?: 'BAIXO' | 'MODERADO' | 'ALTO';
+    healthcareUnit?: string;
+    phone?: string;
+    systolic?: number;
+    diastolic?: number;
+    glucoseValue?: number;
+  }): Promise<Patient> {
+    const { data } = await apiClient.post('/doctor/patients', payload);
+    const created: Patient = data.data;
+
+    try {
+      await saveUserProfileToSupabase({
+        id: created.id,
+        name: created.name,
+        email: created.email,
+        role: 'PATIENT',
+        age: created.age,
+        gender: created.gender,
+        conditions: created.conditions,
+        riskLevel: created.riskLevel,
+        healthcareUnit: created.healthcareUnit,
+        phone: created.phone,
+        fallbackUserId: created.userId || created.id,
+      });
+    } catch (e) {
+      console.warn('[Supabase] Paciente mantido no banco local:', e);
+    }
+
+    try {
+      await FirestoreClinicalService.savePatient(created);
+    } catch (e) {
+      console.warn('[Firestore] Paciente mantido no banco local:', e);
+    }
+
+    return created;
   },
 
   async getPatientProfile(patientId: string): Promise<any> {

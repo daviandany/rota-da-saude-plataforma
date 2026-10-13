@@ -19,6 +19,7 @@ export interface User {
   isGoogleAuth?: boolean;
   firebaseUid?: string;
   profile?: any;
+  linkedPatients?: Patient[];
 }
 
 export interface Patient {
@@ -76,6 +77,8 @@ export interface GlucoseRecord {
 export interface Medication {
   id: string;
   patientId: string;
+  patientName?: string;
+  patientEmail?: string;
   name: string;
   dosage: string;
   frequency: string;

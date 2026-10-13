@@ -7,8 +7,22 @@ export class MedicationService {
     return db.getMedications(patientId);
   }
 
+  static async getAll() {
+    const db = await getDatabase();
+    if (db.getAllMedications) {
+      return db.getAllMedications();
+    }
+    const patients = await db.getAllPatients();
+    const lists = await Promise.all(patients.map((p) => db.getMedications(p.id)));
+    const map = new Map<string, Medication>();
+    lists.flat().forEach((m) => map.set(m.id, m));
+    return Array.from(map.values());
+  }
+
   static async add(data: {
     patientId: string;
+    patientName?: string;
+    patientEmail?: string;
     name: string;
     dosage: string;
     frequency: string;
@@ -18,9 +32,12 @@ export class MedicationService {
     prescribedBy?: string;
   }) {
     const db = await getDatabase();
+    const patient = await db.getPatientById(data.patientId);
     const newMed: Medication = {
       id: 'med-' + Date.now(),
       patientId: data.patientId,
+      patientName: data.patientName || patient?.name || 'Paciente SUS',
+      patientEmail: data.patientEmail || patient?.email || undefined,
       name: data.name,
       dosage: data.dosage,
       frequency: data.frequency,
@@ -48,6 +65,11 @@ export class MedicationService {
   ) {
     const db = await getDatabase();
     return db.updateMedication(medicationId, data);
+  }
+
+  static async delete(medicationId: string) {
+    const db = await getDatabase();
+    return db.deleteMedication(medicationId);
   }
 
   static async updateStatus(medicationId: string, status: 'ATIVO' | 'SUSPENSO' | 'CONCLUIDO') {
@@ -103,6 +125,36 @@ export class AlertService {
       alerts = alerts.filter((a) => a.severity === sevNorm);
     }
     return alerts;
+  }
+
+  static async create(data: {
+    patientId: string;
+    patientName: string;
+    patientAge?: number;
+    patientConditions?: string[];
+    severity: 'CRITICO' | 'ATENCAO' | 'INFO';
+    title: string;
+    message: string;
+    valueRecorded?: string;
+    metricType?: 'PRESSURE' | 'GLUCOSE' | 'MEDICATION';
+  }) {
+    const db = await getDatabase();
+    const patient = await db.getPatientById(data.patientId);
+    const alert: ClinicalAlert = {
+      id: 'alt-' + Date.now(),
+      patientId: data.patientId,
+      patientName: patient?.name || data.patientName || 'Paciente',
+      patientAge: patient?.age || data.patientAge || 55,
+      patientConditions: patient?.conditions || data.patientConditions || ['HAS'],
+      severity: data.severity || 'ATENCAO',
+      title: data.title,
+      message: data.message,
+      valueRecorded: data.valueRecorded || 'Avaliação Médica',
+      metricType: data.metricType || 'PRESSURE',
+      status: 'PENDENTE',
+      triggeredAt: new Date().toISOString(),
+    };
+    return db.addAlert(alert);
   }
 
   static async resolve(alertId: string) {

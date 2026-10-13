@@ -1,10 +1,10 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { getDatabase } from '../db/database.js';
+import { getDatabase, IDatabase } from '../db/database.js';
 import { config } from '../config/index.js';
 import { verifyFirebaseIdToken } from '../config/firebaseAdmin.js';
 import { AuthenticatedUserPayload } from '../middlewares/authMiddleware.js';
-import { User, UserRole } from '../domain/entities.js';
+import { Patient, User, UserRole } from '../domain/entities.js';
 
 export function deriveDeterministicId(prefix: string, identifier: string): string {
   const clean = identifier.trim().toLowerCase();
@@ -12,15 +12,147 @@ export function deriveDeterministicId(prefix: string, identifier: string): strin
   for (let i = 0; i < clean.length; i++) {
     hash = (hash * 31 + clean.charCodeAt(i)) | 0;
   }
-  const slug = clean
-    .split('@')[0]
+  const parts = clean.split(':');
+  const basePart = (parts.length > 1 ? parts[parts.length - 1] : clean.split('@')[0])
     .replace(/[^a-z0-9]/g, '')
     .slice(0, 12);
-  return `${prefix}-${slug || 'user'}-${Math.abs(hash).toString(36)}`;
+  return `${prefix}-${basePart || 'user'}-${Math.abs(hash).toString(36)}`;
+}
+
+async function getLinkedPatientsForLogin(db: IDatabase, userId: string, email: string): Promise<Patient[]> {
+  const all = await db.getAllPatients();
+  const normEmail = email.trim().toLowerCase();
+  return all.filter(
+    (p) => p.userId === userId || (p.email && p.email.trim().toLowerCase() === normEmail)
+  );
+}
+
+async function resolveOrCreatePatientForLogin(
+  db: IDatabase,
+  user: User,
+  options?: {
+    requestedPatientId?: string;
+    requestedName?: string;
+    age?: number;
+    gender?: string;
+    conditions?: string[];
+    avatarUrl?: string;
+    forceNew?: boolean;
+  }
+): Promise<{ patient: Patient; linkedPatients: Patient[] }> {
+  const normEmail = user.email.trim().toLowerCase();
+  const cleanName = options?.requestedName?.trim();
+  let linked = await getLinkedPatientsForLogin(db, user.id, normEmail);
+
+  // 1. Se um patientId específico foi solicitado, prioriza ele
+  if (options?.requestedPatientId && !options?.forceNew) {
+    const byId = await db.getPatientById(options.requestedPatientId);
+    if (byId) {
+      if (!linked.some((p) => p.id === byId.id)) {
+        linked = [byId, ...linked];
+      }
+      return { patient: byId, linkedPatients: linked };
+    }
+  }
+
+  // 2. Se um nome foi informado no login/cadastro, procura paciente com esse nome no mesmo login (ou globalmente se demo)
+  if (cleanName && !options?.forceNew) {
+    const nameLower = cleanName.toLowerCase();
+    const matchInLinked = linked.find((p) => p.name.trim().toLowerCase() === nameLower);
+    if (matchInLinked) {
+      return { patient: matchInLinked, linkedPatients: linked };
+    }
+
+    // Se ainda não há paciente com esse nome neste login, cria um prontuário individualizado com ID único (email + nome)
+    const uniqueKey = linked.length === 0 ? normEmail : `${normEmail}:${nameLower}`;
+    const detPatId = deriveDeterministicId('pat', uniqueKey);
+    const existingByDetId = await db.getPatientById(detPatId);
+    if (existingByDetId && existingByDetId.name.trim().toLowerCase() === nameLower) {
+      if (!linked.some((p) => p.id === existingByDetId.id)) {
+        linked = [existingByDetId, ...linked];
+      }
+      return { patient: existingByDetId, linkedPatients: linked };
+    }
+
+    const newPat = await db.createPatient({
+      id: existingByDetId ? deriveDeterministicId('pat', `${normEmail}:${nameLower}:${Date.now().toString(36).slice(-3)}`) : detPatId,
+      userId: user.id,
+      name: cleanName,
+      email: normEmail,
+      age: options?.age || 54,
+      gender: options?.gender || 'Não informado',
+      conditions: options?.conditions || ['Hipertensão Arterial (HAS)', 'Diabetes Mellitus Tipo 2'],
+      riskLevel: 'MODERADO',
+      healthcareUnit: 'UBS Dr. Manoel de Abreu',
+      avatarUrl: options?.avatarUrl,
+      adherenceRate: 92,
+      phone: '(11) 98765-4321',
+      createdAt: new Date().toISOString(),
+    });
+    linked = [newPat, ...linked.filter((p) => p.id !== newPat.id)];
+    return { patient: newPat, linkedPatients: linked };
+  }
+
+  // 3. Caso forceNew (novo paciente cadastrado com o mesmo login)
+  if (options?.forceNew) {
+    const targetName = cleanName || user.name || 'Paciente';
+    const newId = deriveDeterministicId(
+      'pat',
+      `${normEmail}:${targetName.toLowerCase()}:${linked.length + 1}`
+    );
+    const created = await db.createPatient({
+      id: newId,
+      userId: user.id,
+      name: targetName,
+      email: normEmail,
+      age: options?.age || 50,
+      gender: options?.gender || 'Não informado',
+      conditions: options?.conditions || ['Hipertensão Arterial (HAS)'],
+      riskLevel: 'MODERADO',
+      healthcareUnit: 'UBS Dr. Manoel de Abreu',
+      avatarUrl: options?.avatarUrl,
+      adherenceRate: 95,
+      phone: '(11) 98765-4321',
+      createdAt: new Date().toISOString(),
+    });
+    linked = [created, ...linked.filter((p) => p.id !== created.id)];
+    return { patient: created, linkedPatients: linked };
+  }
+
+  // 4. Fallback: primeiro paciente vinculado ao login ou cria o inicial
+  if (linked.length > 0) {
+    return { patient: linked[0], linkedPatients: linked };
+  }
+
+  const defaultPatId = deriveDeterministicId('pat', normEmail);
+  const defaultPat =
+    (await db.getPatientById(defaultPatId)) ||
+    (await db.createPatient({
+      id: defaultPatId,
+      userId: user.id,
+      name: cleanName || user.name || 'Paciente',
+      email: normEmail,
+      age: options?.age || 52,
+      gender: options?.gender || 'Não informado',
+      conditions: options?.conditions || ['Hipertensão Arterial (HAS)', 'Diabetes Mellitus Tipo 2'],
+      riskLevel: 'MODERADO',
+      healthcareUnit: 'UBS Dr. Manoel de Abreu',
+      avatarUrl: options?.avatarUrl,
+      adherenceRate: 92,
+      phone: '(11) 98765-4321',
+      createdAt: new Date().toISOString(),
+    }));
+  return { patient: defaultPat, linkedPatients: [defaultPat] };
 }
 
 export class AuthService {
-  static async login(email: string, password: string, name?: string, role: UserRole = 'PATIENT') {
+  static async login(
+    email: string,
+    password: string,
+    name?: string,
+    role: UserRole = 'PATIENT',
+    patientId?: string
+  ) {
     const db = await getDatabase();
     const normalizedEmail = email.trim().toLowerCase();
     let user = await db.getUserByEmail(normalizedEmail);
@@ -48,80 +180,48 @@ export class AuthService {
 
       await db.createUser(newUser);
       user = newUser;
-
-      let profileId = '';
-      if (user.role === 'PATIENT') {
-        profileId = deriveDeterministicId('pat', normalizedEmail);
-        await db.createPatient({
-          id: profileId,
-          userId,
-          name: displayName,
-          email: normalizedEmail,
-          age: 52,
-          gender: 'Não informado',
-          conditions: ['Hipertensão Arterial (HAS)', 'Diabetes Mellitus Tipo 2'],
-          riskLevel: 'MODERADO',
-          healthcareUnit: 'UBS Dr. Manoel de Abreu',
-          adherenceRate: 92,
-          phone: '(11) 98765-4321',
-          createdAt: new Date().toISOString(),
-        });
-      } else {
-        profileId = deriveDeterministicId('prof', normalizedEmail);
-        await db.createProfessional({
-          id: profileId,
-          userId,
-          name: displayName.startsWith('Dr') ? displayName : `Dr(a). ${displayName}`,
-          email: normalizedEmail,
-          crm: 'CRM ' + Math.floor(10000 + Math.random() * 89999) + '/SP',
-          specialty: 'Medicina de Família e Comunidade',
-          healthcareUnit: 'UBS Dr. Manoel de Abreu',
-          createdAt: new Date().toISOString(),
-        });
-      }
     } else {
       const isMatch = await bcrypt.compare(password, user.passwordHash);
       if (!isMatch) {
         if (password === 'paciente123' || password === 'medico123') {
           // Permite login com senha mestra de demonstração
         } else {
-          throw new Error('Senha incorreta para este e-mail. Para Maria Silva utilize "paciente123" ou use suas credenciais cadastradas.');
+          throw new Error('Senha incorreta para este e-mail. Para Maria Silva utilize "paciente123", para Dr. Carlos utilize "medico123" ou use suas credenciais cadastradas.');
         }
+      }
+
+      // Alinha o papel (role) caso o usuário selecione explicitamente Médico ou Paciente no login
+      if (role && user.role !== role) {
+        user.role = role;
+        await db.createUser(user);
+      }
+      if (name && name.trim() && role === 'PROFESSIONAL' && user.name !== name.trim()) {
+        user.name = name.trim();
+        await db.createUser(user);
       }
     }
 
     let profileId = '';
     let profileData: any = null;
+    let linkedPatients: Patient[] = [];
 
     if (user.role === 'PATIENT') {
-      let patient = await db.getPatientByUserId(user.id);
-      if (!patient) {
-        const detPatId = deriveDeterministicId('pat', user.email);
-        patient = (await db.getPatientById(detPatId)) || (await db.createPatient({
-          id: detPatId,
-          userId: user.id,
-          name: user.name,
-          email: user.email,
-          age: 52,
-          gender: 'Não informado',
-          conditions: ['Hipertensão Arterial (HAS)', 'Diabetes Mellitus Tipo 2'],
-          riskLevel: 'MODERADO',
-          healthcareUnit: 'UBS Dr. Manoel de Abreu',
-          adherenceRate: 92,
-          phone: '(11) 98765-4321',
-          createdAt: new Date().toISOString(),
-        }));
-      }
-      profileId = patient.id;
-      profileData = patient;
+      const resolved = await resolveOrCreatePatientForLogin(db, user, {
+        requestedPatientId: patientId,
+        requestedName: name,
+      });
+      profileId = resolved.patient.id;
+      profileData = resolved.patient;
+      linkedPatients = resolved.linkedPatients;
     } else if (user.role === 'PROFESSIONAL') {
       let professional = await db.getProfessionalByUserId(user.id);
       if (!professional) {
         const detProfId = deriveDeterministicId('prof', user.email);
+        const profName = name?.trim() || user.name;
         professional = (await db.getProfessionalById(detProfId)) || (await db.createProfessional({
           id: detProfId,
           userId: user.id,
-          name: user.name,
+          name: profName.startsWith('Dr') ? profName : `Dr(a). ${profName}`,
           email: user.email,
           crm: 'CRM 12345/SP',
           specialty: 'Medicina de Família e Comunidade',
@@ -131,12 +231,16 @@ export class AuthService {
       }
       profileId = professional.id;
       profileData = professional;
+      linkedPatients = await getLinkedPatientsForLogin(db, user.id, user.email);
     }
+
+    const activeDisplayName =
+      user.role === 'PATIENT' && profileData?.name ? profileData.name : profileData?.name || user.name;
 
     const payload: AuthenticatedUserPayload = {
       userId: user.id,
       email: user.email,
-      name: user.name,
+      name: activeDisplayName,
       role: user.role,
       profileId,
     };
@@ -150,10 +254,11 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
-        name: user.name,
+        name: activeDisplayName,
         role: user.role,
         profileId,
         profile: profileData,
+        linkedPatients,
       },
     };
   }
@@ -170,50 +275,49 @@ export class AuthService {
   }) {
     const db = await getDatabase();
     const normalizedEmail = data.email.trim().toLowerCase();
-    const existing = await db.getUserByEmail(normalizedEmail);
-    if (existing) {
-      throw new Error('Este e-mail já está cadastrado no sistema.');
+    let user = await db.getUserByEmail(normalizedEmail);
+
+    if (!user) {
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash(data.password, salt);
+      const userId = deriveDeterministicId('u', normalizedEmail);
+
+      const newUser: User = {
+        id: userId,
+        email: normalizedEmail,
+        passwordHash,
+        name: data.name.trim(),
+        role: data.role,
+        createdAt: new Date().toISOString(),
+      };
+
+      await db.createUser(newUser);
+      user = newUser;
+    } else if (user.role !== data.role) {
+      user.role = data.role;
+      await db.createUser(user);
     }
-
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(data.password, salt);
-    const userId = deriveDeterministicId('u', normalizedEmail);
-
-    const newUser: User = {
-      id: userId,
-      email: normalizedEmail,
-      passwordHash,
-      name: data.name,
-      role: data.role,
-      createdAt: new Date().toISOString(),
-    };
-
-    await db.createUser(newUser);
 
     let profileId = '';
     let profileData: any = null;
+    let linkedPatients: Patient[] = [];
 
     if (data.role === 'PATIENT') {
-      profileId = deriveDeterministicId('pat', normalizedEmail);
-      const patient = await db.createPatient({
-        id: profileId,
-        userId,
-        name: data.name,
-        email: normalizedEmail,
-        age: data.age || 45,
-        gender: data.gender || 'Não informado',
-        conditions: data.conditions || ['HAS'],
-        riskLevel: 'MODERADO',
-        healthcareUnit: 'Clínica da Família',
-        adherenceRate: 100,
-        createdAt: new Date().toISOString(),
+      // Permite cadastrar/identificar múltiplos pacientes sob o mesmo login (mesmo e-mail)
+      const resolved = await resolveOrCreatePatientForLogin(db, user, {
+        requestedName: data.name,
+        age: data.age,
+        gender: data.gender,
+        conditions: data.conditions,
       });
-      profileData = patient;
+      profileId = resolved.patient.id;
+      profileData = resolved.patient;
+      linkedPatients = resolved.linkedPatients;
     } else {
       profileId = deriveDeterministicId('prof', normalizedEmail);
       const prof = await db.createProfessional({
         id: profileId,
-        userId,
+        userId: user.id,
         name: data.name,
         email: normalizedEmail,
         crm: data.crm || 'CRM 00000',
@@ -222,13 +326,17 @@ export class AuthService {
         createdAt: new Date().toISOString(),
       });
       profileData = prof;
+      linkedPatients = await getLinkedPatientsForLogin(db, user.id, normalizedEmail);
     }
 
+    const activeDisplayName =
+      data.role === 'PATIENT' && profileData?.name ? profileData.name : data.name || user.name;
+
     const payload: AuthenticatedUserPayload = {
-      userId,
-      email: newUser.email,
-      name: newUser.name,
-      role: newUser.role,
+      userId: user.id,
+      email: user.email,
+      name: activeDisplayName,
+      role: data.role,
       profileId,
     };
 
@@ -239,41 +347,140 @@ export class AuthService {
     return {
       token,
       user: {
-        id: userId,
-        email: newUser.email,
-        name: newUser.name,
-        role: newUser.role,
+        id: user.id,
+        email: user.email,
+        name: activeDisplayName,
+        role: data.role,
         profileId,
         profile: profileData,
+        linkedPatients,
       },
     };
   }
 
-  static async getMe(userId: string) {
+  static async getMe(userId: string, currentProfileId?: string) {
     const db = await getDatabase();
     const user = await db.getUserById(userId);
     if (!user) throw new Error('Usuário não encontrado.');
 
     let profileData: any = null;
-    let profileId = '';
+    let profileId = currentProfileId || '';
+    const linkedPatients = await getLinkedPatientsForLogin(db, user.id, user.email);
 
     if (user.role === 'PATIENT') {
-      const patient = await db.getPatientByUserId(user.id);
+      let patient = profileId ? await db.getPatientById(profileId) : null;
+      if (!patient) {
+        patient = linkedPatients[0] || (await db.getPatientByUserId(user.id));
+      }
       profileId = patient ? patient.id : '';
       profileData = patient;
     } else {
-      const professional = await db.getProfessionalByUserId(user.id);
+      let professional = profileId ? await db.getProfessionalById(profileId) : null;
+      if (!professional) {
+        professional = await db.getProfessionalByUserId(user.id);
+      }
       profileId = professional ? professional.id : '';
       profileData = professional;
     }
 
+    const activeName =
+      user.role === 'PATIENT' && profileData?.name ? profileData.name : profileData?.name || user.name;
+
     return {
       id: user.id,
       email: user.email,
-      name: user.name,
+      name: activeName,
       role: user.role,
       profileId,
       profile: profileData,
+      linkedPatients,
+    };
+  }
+
+  static async switchActivePatient(
+    userId: string,
+    options: {
+      patientId?: string;
+      newPatientName?: string;
+      age?: number;
+      gender?: string;
+      conditions?: string[];
+      role?: UserRole;
+    }
+  ) {
+    const db = await getDatabase();
+    const user = await db.getUserById(userId);
+    if (!user) throw new Error('Usuário não encontrado.');
+
+    const targetRole: UserRole = options.role || 'PATIENT';
+    if (user.role !== targetRole) {
+      user.role = targetRole;
+      await db.createUser(user);
+    }
+
+    let profileId = '';
+    let profileData: any = null;
+    let linkedPatients = await getLinkedPatientsForLogin(db, user.id, user.email);
+
+    if (targetRole === 'PATIENT') {
+      const resolved = await resolveOrCreatePatientForLogin(db, user, {
+        requestedPatientId: options.patientId,
+        requestedName: options.newPatientName,
+        age: options.age,
+        gender: options.gender,
+        conditions: options.conditions,
+        forceNew: Boolean(options.newPatientName && !options.patientId),
+      });
+      profileId = resolved.patient.id;
+      profileData = resolved.patient;
+      linkedPatients = resolved.linkedPatients;
+    } else {
+      let professional = await db.getProfessionalByUserId(user.id);
+      if (!professional) {
+        const detProfId = deriveDeterministicId('prof', user.email);
+        professional =
+          (await db.getProfessionalById(detProfId)) ||
+          (await db.createProfessional({
+            id: detProfId,
+            userId: user.id,
+            name: user.name.startsWith('Dr') ? user.name : `Dr(a). ${user.name}`,
+            email: user.email,
+            crm: 'CRM 12345/SP',
+            specialty: 'Medicina de Família e Comunidade',
+            healthcareUnit: 'UBS Dr. Manoel de Abreu',
+            createdAt: new Date().toISOString(),
+          }));
+      }
+      profileId = professional.id;
+      profileData = professional;
+    }
+
+    const activeName =
+      targetRole === 'PATIENT' && profileData?.name ? profileData.name : profileData?.name || user.name;
+
+    const tokenPayload: AuthenticatedUserPayload = {
+      userId: user.id,
+      email: user.email,
+      name: activeName,
+      role: targetRole,
+      profileId,
+    };
+
+    const token = jwt.sign(tokenPayload, config.jwtSecret as jwt.Secret, {
+      expiresIn: config.jwtExpiresIn as any,
+    });
+
+    return {
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        name: activeName,
+        role: targetRole,
+        profileId,
+        profile: profileData,
+        linkedPatients,
+      },
     };
   }
 
@@ -281,6 +488,8 @@ export class AuthService {
     uid: string;
     email: string;
     name: string;
+    customPatientName?: string;
+    patientId?: string;
     photoURL?: string;
     role: UserRole;
     idToken?: string;
@@ -312,73 +521,34 @@ export class AuthService {
         id: userId,
         email: normalizedEmail,
         passwordHash,
-        name: payload.name || normalizedEmail.split('@')[0],
+        name: payload.customPatientName?.trim() || payload.name || normalizedEmail.split('@')[0],
         role: payload.role,
         createdAt: new Date().toISOString(),
       };
 
       await db.createUser(newUser);
       user = newUser;
-
-      let profileId = '';
-      if (payload.role === 'PATIENT') {
-        profileId = deriveDeterministicId('pat', normalizedEmail);
-        await db.createPatient({
-          id: profileId,
-          userId,
-          name: payload.name || 'Paciente Google',
-          email: normalizedEmail,
-          age: 55,
-          gender: 'Não especificado',
-          conditions: ['Hipertensão Arterial (HAS)', 'Diabetes Mellitus Tipo 2'],
-          riskLevel: 'MODERADO',
-          healthcareUnit: 'UBS Dr. Manoel de Abreu',
-          avatarUrl: payload.photoURL,
-          adherenceRate: 94,
-          phone: '(11) 98765-4321',
-          createdAt: new Date().toISOString(),
-        });
-      } else {
-        profileId = deriveDeterministicId('prof', normalizedEmail);
-        await db.createProfessional({
-          id: profileId,
-          userId,
-          name: payload.name || 'Dr(a). Google',
-          email: normalizedEmail,
-          crm: 'CRM ' + Math.floor(10000 + Math.random() * 89999) + '/SP',
-          specialty: 'Medicina de Família e Comunidade',
-          healthcareUnit: 'UBS Dr. Manoel de Abreu',
-          avatarUrl: payload.photoURL,
-          createdAt: new Date().toISOString(),
-        });
+    } else {
+      if (payload.role && user.role !== payload.role) {
+        user.role = payload.role;
+        await db.createUser(user);
       }
     }
 
     let profileId = '';
     let profileData: any = null;
+    let linkedPatients: Patient[] = [];
 
     if (user.role === 'PATIENT') {
-      let patient = await db.getPatientByUserId(user.id);
-      if (!patient) {
-        const detPatId = deriveDeterministicId('pat', user.email);
-        patient = (await db.getPatientById(detPatId)) || (await db.createPatient({
-          id: detPatId,
-          userId: user.id,
-          name: user.name,
-          email: user.email,
-          age: 55,
-          gender: 'Não especificado',
-          conditions: ['Hipertensão Arterial (HAS)', 'Diabetes Mellitus Tipo 2'],
-          riskLevel: 'MODERADO',
-          healthcareUnit: 'UBS Dr. Manoel de Abreu',
-          avatarUrl: payload.photoURL,
-          adherenceRate: 94,
-          phone: '(11) 98765-4321',
-          createdAt: new Date().toISOString(),
-        }));
-      }
-      profileId = patient.id;
-      profileData = patient;
+      const targetName = payload.customPatientName?.trim() || payload.name;
+      const resolved = await resolveOrCreatePatientForLogin(db, user, {
+        requestedPatientId: payload.patientId,
+        requestedName: targetName,
+        avatarUrl: payload.photoURL,
+      });
+      profileId = resolved.patient.id;
+      profileData = resolved.patient;
+      linkedPatients = resolved.linkedPatients;
     } else {
       let professional = await db.getProfessionalByUserId(user.id);
       if (!professional) {
@@ -386,7 +556,7 @@ export class AuthService {
         professional = (await db.getProfessionalById(detProfId)) || (await db.createProfessional({
           id: detProfId,
           userId: user.id,
-          name: user.name,
+          name: payload.name || user.name,
           email: user.email,
           crm: 'CRM 12345/SP',
           specialty: 'Medicina de Família e Comunidade',
@@ -397,12 +567,16 @@ export class AuthService {
       }
       profileId = professional.id;
       profileData = professional;
+      linkedPatients = await getLinkedPatientsForLogin(db, user.id, user.email);
     }
+
+    const activeName =
+      user.role === 'PATIENT' && profileData?.name ? profileData.name : profileData?.name || user.name;
 
     const tokenPayload: AuthenticatedUserPayload = {
       userId: user.id,
       email: user.email,
-      name: user.name,
+      name: activeName,
       role: user.role,
       profileId,
     };
@@ -416,50 +590,68 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
-        name: user.name,
+        name: activeName,
         role: user.role,
         profileId,
         avatarUrl: payload.photoURL || (profileData as any)?.avatarUrl,
         firebaseUid: payload.uid,
         isGoogleAuth: true,
         profile: profileData,
+        linkedPatients,
       },
     };
   }
 
-  static async updateProfile(userId: string, data: {
-    name?: string;
-    age?: number;
-    gender?: string;
-    conditions?: string[];
-    healthcareUnit?: string;
-    phone?: string;
-    crm?: string;
-    specialty?: string;
-    riskLevel?: string;
-  }) {
+  static async updateProfile(
+    userId: string,
+    data: {
+      patientId?: string;
+      name?: string;
+      age?: number;
+      gender?: string;
+      conditions?: string[];
+      healthcareUnit?: string;
+      phone?: string;
+      crm?: string;
+      specialty?: string;
+      riskLevel?: string;
+      createNewPatientForLogin?: boolean;
+    },
+    currentProfileId?: string
+  ) {
     const db = await getDatabase();
     const user = await db.getUserById(userId);
     if (!user) throw new Error('Usuário não encontrado.');
 
-    if (data.name && data.name.trim()) {
-      user.name = data.name.trim();
-    }
-
     let profileData: any = null;
+    const targetPatientId = data.patientId || currentProfileId;
+
     if (user.role === 'PATIENT') {
-      const patient = await db.getPatientByUserId(userId);
-      if (patient) {
-        const updated = await db.updatePatient(patient.id, {
-          name: data.name?.trim() || patient.name,
-          age: data.age !== undefined && !isNaN(Number(data.age)) ? Number(data.age) : patient.age,
-          gender: data.gender || patient.gender,
-          conditions: data.conditions || patient.conditions,
-          healthcareUnit: data.healthcareUnit || patient.healthcareUnit,
-          phone: data.phone || patient.phone,
-          riskLevel: (data.riskLevel as any) || patient.riskLevel,
+      if (data.createNewPatientForLogin && data.name?.trim()) {
+        const resolved = await resolveOrCreatePatientForLogin(db, user, {
+          requestedName: data.name.trim(),
+          age: data.age,
+          gender: data.gender,
+          conditions: data.conditions,
+          forceNew: true,
         });
-        profileData = updated;
+        profileData = resolved.patient;
+      } else {
+        const patient =
+          (targetPatientId ? await db.getPatientById(targetPatientId) : null) ||
+          (await db.getPatientByUserId(userId));
+        if (patient) {
+          const updated = await db.updatePatient(patient.id, {
+            name: data.name?.trim() || patient.name,
+            age: data.age !== undefined && !isNaN(Number(data.age)) ? Number(data.age) : patient.age,
+            gender: data.gender || patient.gender,
+            conditions: data.conditions || patient.conditions,
+            healthcareUnit: data.healthcareUnit || patient.healthcareUnit,
+            phone: data.phone || patient.phone,
+            riskLevel: (data.riskLevel as any) || patient.riskLevel,
+          });
+          profileData = updated;
+        }
       }
     } else {
       const prof = await db.getProfessionalByUserId(userId);
@@ -472,17 +664,22 @@ export class AuthService {
       }
     }
 
+    const linkedPatients = await getLinkedPatientsForLogin(db, user.id, user.email);
+    const activeName =
+      user.role === 'PATIENT' && profileData?.name ? profileData.name : profileData?.name || user.name;
+
     return {
       success: true,
       user: {
         id: user.id,
         email: user.email,
-        name: user.name,
+        name: activeName,
         role: user.role,
-        profileId: profileData?.id || '',
+        profileId: profileData?.id || currentProfileId || '',
         avatarUrl: (profileData as any)?.avatarUrl,
         isGoogleAuth: !!(user as any).firebaseUid,
         profile: profileData,
+        linkedPatients,
       },
     };
   }

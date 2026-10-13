@@ -182,6 +182,16 @@ export async function signInWithGoogle(
     const errorCode = error?.code || '';
     const errorMsg = error?.message || String(error);
 
+    const isUserCancelledPopup =
+      errorCode === 'auth/popup-closed-by-user' ||
+      errorCode === 'auth/cancelled-popup-request' ||
+      errorMsg.includes('popup-closed-by-user') ||
+      errorMsg.includes('cancelled-popup-request');
+
+    if (isUserCancelledPopup) {
+      throw error;
+    }
+
     // Identifica erros causados pelo ambiente sandboxed iframe / bloqueio de cross-origin / third-party cookies
     const isNetworkOrIframeError =
       errorCode === 'auth/network-request-failed' ||
@@ -211,7 +221,7 @@ export async function signInWithGoogle(
       return { firebaseUser: fallbackUser, profile };
     }
 
-    console.error('[Firebase Auth] Erro no login Google:', error);
+    console.warn('[Firebase Auth] Aviso no login Google:', errorMsg);
     throw error;
   }
 }

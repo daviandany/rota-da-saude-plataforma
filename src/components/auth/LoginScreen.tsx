@@ -57,7 +57,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ initialRole = 'PATIENT
     setLoading(true);
     setError(null);
     try {
-      await login(email, password);
+      await login(email, password, undefined, role);
     } catch (err: any) {
       setError(err.message || 'Falha ao autenticar.');
     } finally {

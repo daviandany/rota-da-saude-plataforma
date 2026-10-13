@@ -58,8 +58,10 @@ export interface IDatabase {
 
   // Medications
   getMedications(patientId: string): Promise<Medication[]>;
+  getAllMedications?(): Promise<Medication[]>;
   addMedication(medication: Medication): Promise<Medication>;
   updateMedication(id: string, data: Partial<Medication>): Promise<Medication | null>;
+  deleteMedication(id: string): Promise<boolean>;
 
   // Appointments
   getAppointments(patientId?: string): Promise<Appointment[]>;
@@ -80,15 +82,15 @@ class InMemoryDatabase implements IDatabase {
   private users: User[] = [...initialUsers];
   private professionals: Professional[] = [...initialProfessionals];
   private patients: Patient[] = [...initialPatients];
-  private bpRecords: BloodPressureRecord[] = [];
-  private glucoseRecords: GlucoseRecord[] = [];
-  private medications: Medication[] = [];
-  private appointments: Appointment[] = [];
-  private alerts: ClinicalAlert[] = [];
+  private bpRecords: BloodPressureRecord[] = [...initialBloodPressure];
+  private glucoseRecords: GlucoseRecord[] = [...initialGlucose];
+  private medications: Medication[] = [...initialMedications];
+  private appointments: Appointment[] = [...initialAppointments];
+  private alerts: ClinicalAlert[] = [...initialAlerts];
   private educational: EducationalContent[] = [...initialEducationalContents];
 
   async init(): Promise<void> {
-    console.log('[DB] In-Memory Persistence Layer initialized with clean dynamic data store.');
+    console.log('[DB] In-Memory Persistence Layer initialized with clinical seed data.');
   }
 
   async getUserByEmail(email: string): Promise<User | null> {
@@ -100,6 +102,13 @@ class InMemoryDatabase implements IDatabase {
   }
 
   async createUser(user: User): Promise<User> {
+    const idx = this.users.findIndex(
+      (u) => u.id === user.id || u.email.toLowerCase() === user.email.toLowerCase()
+    );
+    if (idx !== -1) {
+      this.users[idx] = { ...this.users[idx], ...user };
+      return this.users[idx];
+    }
     this.users.push(user);
     return user;
   }
@@ -124,6 +133,11 @@ class InMemoryDatabase implements IDatabase {
   }
 
   async createPatient(patient: Patient): Promise<Patient> {
+    const idx = this.patients.findIndex((p) => p.id === patient.id);
+    if (idx !== -1) {
+      this.patients[idx] = { ...this.patients[idx], ...patient };
+      return this.patients[idx];
+    }
     this.patients.push(patient);
     return patient;
   }
@@ -144,6 +158,11 @@ class InMemoryDatabase implements IDatabase {
   }
 
   async createProfessional(professional: Professional): Promise<Professional> {
+    const idx = this.professionals.findIndex((p) => p.id === professional.id);
+    if (idx !== -1) {
+      this.professionals[idx] = { ...this.professionals[idx], ...professional };
+      return this.professionals[idx];
+    }
     this.professionals.push(professional);
     return professional;
   }
@@ -174,6 +193,10 @@ class InMemoryDatabase implements IDatabase {
     return this.medications.filter((m) => m.patientId === patientId);
   }
 
+  async getAllMedications(): Promise<Medication[]> {
+    return [...this.medications];
+  }
+
   async addMedication(medication: Medication): Promise<Medication> {
     this.medications.push(medication);
     return medication;
@@ -184,6 +207,12 @@ class InMemoryDatabase implements IDatabase {
     if (idx === -1) return null;
     this.medications[idx] = { ...this.medications[idx], ...data };
     return this.medications[idx];
+  }
+
+  async deleteMedication(id: string): Promise<boolean> {
+    const initialLen = this.medications.length;
+    this.medications = this.medications.filter((m) => m.id !== id);
+    return this.medications.length < initialLen;
   }
 
   async getAppointments(patientId?: string): Promise<Appointment[]> {
@@ -437,7 +466,11 @@ class PostgresDatabase implements IDatabase {
   async createUser(user: User): Promise<User> {
     await this.pool.query(
       `INSERT INTO users (id, email, password_hash, name, role, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (id) DO UPDATE SET
+         email = EXCLUDED.email,
+         name = EXCLUDED.name,
+         role = EXCLUDED.role`,
       [user.id, user.email, user.passwordHash, user.name, user.role, user.createdAt]
     );
     return user;
@@ -724,6 +757,26 @@ class PostgresDatabase implements IDatabase {
       status,
       createdAt: current.created_at,
     };
+  }
+
+  async getAllMedications(): Promise<Medication[]> {
+    const res = await this.pool.query('SELECT * FROM medications ORDER BY created_at DESC');
+    return res.rows.map((r) => ({
+      id: r.id,
+      patientId: r.patient_id,
+      name: r.name,
+      dosage: r.dosage,
+      frequency: r.frequency,
+      reminderTimes: r.reminder_times,
+      status: r.status,
+      notes: r.notes,
+      createdAt: r.created_at,
+    }));
+  }
+
+  async deleteMedication(id: string): Promise<boolean> {
+    const res = await this.pool.query('DELETE FROM medications WHERE id = $1', [id]);
+    return (res.rowCount || 0) > 0;
   }
 
   async getAppointments(patientId?: string): Promise<Appointment[]> {

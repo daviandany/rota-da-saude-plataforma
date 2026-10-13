@@ -8,11 +8,11 @@ import { getDatabase } from '../db/database.js';
 export const authController = {
   async login(req: Request, res: Response) {
     try {
-      const { email, password, name, role } = req.body;
+      const { email, password, name, role, patientId } = req.body;
       if (!email || !password) {
         return res.status(400).json({ success: false, error: 'E-mail e senha são obrigatórios.' });
       }
-      const result = await AuthService.login(email, password, name, role);
+      const result = await AuthService.login(email, password, name, role, patientId);
       return res.json({ success: true, ...result });
     } catch (err: any) {
       return res.status(400).json({ success: false, error: err.message });
@@ -46,7 +46,7 @@ export const authController = {
       if (!req.user) {
         return res.status(401).json({ success: false, error: 'Não autenticado.' });
       }
-      const me = await AuthService.getMe(req.user.userId);
+      const me = await AuthService.getMe(req.user.userId, req.user.profileId);
       return res.json({ success: true, user: me });
     } catch (err: any) {
       return res.status(400).json({ success: false, error: err.message });
@@ -58,8 +58,20 @@ export const authController = {
       if (!req.user) {
         return res.status(401).json({ success: false, error: 'Não autenticado.' });
       }
-      const result = await AuthService.updateProfile(req.user.userId, req.body);
+      const result = await AuthService.updateProfile(req.user.userId, req.body, req.user.profileId);
       return res.json(result);
+    } catch (err: any) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  },
+
+  async switchPatient(req: Request, res: Response) {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ success: false, error: 'Não autenticado.' });
+      }
+      const result = await AuthService.switchActivePatient(req.user.userId, req.body);
+      return res.json({ success: true, ...result });
     } catch (err: any) {
       return res.status(400).json({ success: false, error: err.message });
     }
@@ -67,7 +79,7 @@ export const authController = {
 
   async googleFirebaseLogin(req: Request, res: Response) {
     try {
-      const { uid, email, name, photoURL, role, idToken } = req.body;
+      const { uid, email, name, customPatientName, patientId, photoURL, role, idToken } = req.body;
       if (!uid || !email) {
         return res.status(400).json({ success: false, error: 'UID e e-mail Firebase Google são obrigatórios.' });
       }
@@ -75,6 +87,8 @@ export const authController = {
         uid,
         email,
         name: name || email.split('@')[0],
+        customPatientName,
+        patientId,
         photoURL,
         role: role === 'PROFESSIONAL' ? 'PROFESSIONAL' : 'PATIENT',
         idToken,
@@ -247,14 +261,40 @@ export const doctorController = {
       return res.status(400).json({ success: false, error: err.message });
     }
   },
+
+  async createPatient(req: Request, res: Response) {
+    try {
+      const { name } = req.body;
+      if (!name || !name.trim()) {
+        return res.status(400).json({ success: false, error: 'O nome do paciente é obrigatório.' });
+      }
+      const created = await DoctorService.createPatient(req.body);
+      return res.status(201).json({ success: true, data: created });
+    } catch (err: any) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  },
 };
 
 export const medicationController = {
   async getMedications(req: Request, res: Response) {
     try {
+      const explicitPatientId = req.query.patientId as string | undefined;
+      const isDoctor = req.user?.role === 'PROFESSIONAL';
+
+      if (isDoctor && !explicitPatientId) {
+        // Médicos visualizam todas as prescrições de todos os pacientes do sistema
+        const allMeds = await MedicationService.getAll();
+        return res.json({ success: true, data: allMeds });
+      }
+
+      const fallback =
+        explicitPatientId || isDoctor
+          ? { profileId: explicitPatientId }
+          : req.user;
       const patient = await ClinicalService.ensurePatient(
-        (req.query.patientId as string) || req.user?.profileId,
-        req.user
+        explicitPatientId || req.user?.profileId,
+        fallback
       );
       const meds = await MedicationService.getByPatient(patient.id);
       return res.json({ success: true, data: meds });
@@ -265,21 +305,47 @@ export const medicationController = {
 
   async addMedication(req: Request, res: Response) {
     try {
+      const {
+        patientId,
+        patientName,
+        patientEmail,
+        name,
+        dosage,
+        frequency,
+        reminderTimes,
+        notes,
+        addedByRole,
+        prescribedBy,
+      } = req.body;
+      const isDoctorActor = req.user?.role === 'PROFESSIONAL' || addedByRole === 'PROFESSIONAL';
+      const fallback =
+        patientId || isDoctorActor
+          ? {
+              profileId: patientId,
+              name: patientName,
+              email: patientEmail,
+            }
+          : req.user;
+
       const patient = await ClinicalService.ensurePatient(
-        req.body.patientId || req.user?.profileId,
-        req.user
+        patientId || req.user?.profileId,
+        fallback
       );
-      const { name, dosage, frequency, reminderTimes, notes, addedByRole, prescribedBy } = req.body;
-      const role = req.user?.role || addedByRole || 'PATIENT';
+      const role = isDoctorActor ? 'PROFESSIONAL' : req.user?.role || addedByRole || 'PATIENT';
       const med = await MedicationService.add({
         patientId: patient.id,
+        patientName: patientName || patient?.name,
+        patientEmail: patientEmail || patient?.email,
         name,
         dosage,
         frequency,
         reminderTimes: reminderTimes || ['08:00'],
         notes,
         addedByRole: role,
-        prescribedBy: prescribedBy || (role === 'PROFESSIONAL' ? 'Médico da Equipe ESF' : 'Paciente'),
+        prescribedBy:
+          role === 'PROFESSIONAL'
+            ? prescribedBy || req.user?.name || 'Médico da Equipe ESF'
+            : undefined,
       });
       return res.status(201).json({ success: true, data: med });
     } catch (err: any) {
@@ -290,9 +356,14 @@ export const medicationController = {
   async updateMedication(req: Request, res: Response) {
     try {
       const { id } = req.params;
+      const explicitPatientId = req.body.patientId as string | undefined;
+      const fallback =
+        explicitPatientId || req.user?.role === 'PROFESSIONAL'
+          ? { profileId: explicitPatientId }
+          : req.user;
       const patient = await ClinicalService.ensurePatient(
-        req.body.patientId || req.user?.profileId,
-        req.user
+        explicitPatientId || req.user?.profileId,
+        fallback
       );
       const existingMeds = await MedicationService.getByPatient(patient.id);
       const targetMed = existingMeds.find((m) => m.id === id);
@@ -318,6 +389,31 @@ export const medicationController = {
         req.user?.role
       );
       return res.json({ success: true, data: updated });
+    } catch (err: any) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  },
+
+  async deleteMedication(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const isDoctor = req.user?.role === 'PROFESSIONAL';
+
+      // Paciente só pode excluir se o medicamento tiver sido adicionado por ele
+      if (!isDoctor) {
+        const patient = await ClinicalService.ensurePatient(req.user?.profileId, req.user);
+        const userMeds = await MedicationService.getByPatient(patient.id);
+        const target = userMeds.find((m) => m.id === id);
+        if (target && target.addedByRole === 'PROFESSIONAL') {
+          return res.status(403).json({
+            success: false,
+            error: 'Medicamentos prescritos pelo médico não podem ser excluídos pelo paciente.',
+          });
+        }
+      }
+
+      const success = await MedicationService.delete(id);
+      return res.json({ success: true, message: 'Medicamento removido com sucesso.' });
     } catch (err: any) {
       return res.status(400).json({ success: false, error: err.message });
     }
@@ -364,9 +460,13 @@ export const appointmentController = {
         notes,
       } = req.body;
 
+      const fallback =
+        patientId || req.user?.role === 'PROFESSIONAL'
+          ? { profileId: patientId, name: patientName }
+          : req.user;
       const patient = await ClinicalService.ensurePatient(
         patientId || req.user?.profileId,
-        req.user
+        fallback
       );
       const targetPatientId = patient.id;
       const pName = patientName || patient.name || req.user?.name || 'Paciente';
@@ -404,6 +504,27 @@ export const alertController = {
       const severity = req.query.severity as string;
       const alerts = await AlertService.getAlerts(patientId, severity);
       return res.json({ success: true, data: alerts });
+    } catch (err: any) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  },
+
+  async createAlert(req: Request, res: Response) {
+    try {
+      const { patientId, patientName, severity, title, message, valueRecorded, metricType } = req.body;
+      if (!title || !message) {
+        return res.status(400).json({ success: false, error: 'Título e mensagem do alerta são obrigatórios.' });
+      }
+      const alert = await AlertService.create({
+        patientId: patientId || 'pat-maria',
+        patientName: patientName || 'Maria Silva',
+        severity: severity || 'ATENCAO',
+        title,
+        message,
+        valueRecorded,
+        metricType: metricType || 'PRESSURE',
+      });
+      return res.status(201).json({ success: true, data: alert });
     } catch (err: any) {
       return res.status(400).json({ success: false, error: err.message });
     }

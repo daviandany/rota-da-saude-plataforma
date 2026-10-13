@@ -33,8 +33,39 @@ export const WebLayout: React.FC<WebLayoutProps> = ({
   onOpenNotificationModal,
   onOpenProfileModal,
 }) => {
-  const { user, logout } = useAuth();
+  const { user, logout, switchPatientProfile } = useAuth();
   const { unreadCount } = useNotifications();
+  const [switchingProfile, setSwitchingProfile] = React.useState(false);
+
+  const linkedPatients = user?.linkedPatients || [];
+  const shortProfileCode = (user?.profileId || user?.id || '')
+    .replace(/^pat-|^prof-/, '')
+    .slice(0, 8)
+    .toUpperCase();
+
+  const handleQuickSwitch = async (value: string) => {
+    if (!value || switchingProfile) return;
+    setSwitchingProfile(true);
+    try {
+      if (value === '__ROLE_PROFESSIONAL__') {
+        await switchPatientProfile({ role: 'PROFESSIONAL' });
+      } else if (value === '__ROLE_PATIENT__') {
+        await switchPatientProfile({
+          role: 'PATIENT',
+          patientId: linkedPatients[0]?.id,
+        });
+      } else {
+        await switchPatientProfile({
+          role: 'PATIENT',
+          patientId: value,
+        });
+      }
+    } catch (e) {
+      console.error('Erro ao alternar perfil no mesmo login:', e);
+    } finally {
+      setSwitchingProfile(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-100 dark:bg-slate-950 flex flex-col font-sans text-slate-900 dark:text-slate-100 transition-colors duration-200">
@@ -63,6 +94,41 @@ export const WebLayout: React.FC<WebLayoutProps> = ({
 
           {/* Right Action Tools */}
           <div className="flex items-center gap-1.5 sm:gap-2.5">
+            {/* Seletor rápido de Paciente / Perfil no Mesmo Login */}
+            <div className="hidden lg:flex items-center gap-1.5 bg-slate-800/90 border border-slate-700/80 rounded-xl px-2.5 py-1">
+              <Users className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+              <select
+                disabled={switchingProfile}
+                value={
+                  user?.role === 'PROFESSIONAL'
+                    ? '__ROLE_PROFESSIONAL__'
+                    : user?.profileId || '__ROLE_PATIENT__'
+                }
+                onChange={(e) => handleQuickSwitch(e.target.value)}
+                title="Alternar entre pacientes identificados neste mesmo login ou modo médico"
+                className="bg-transparent text-[11px] font-bold text-slate-100 outline-none cursor-pointer max-w-[230px]"
+              >
+                {linkedPatients.map((pt) => (
+                  <option key={pt.id} value={pt.id} className="bg-slate-900 text-white">
+                    Paciente: {pt.name} (#{pt.id.replace(/^pat-/, '').slice(0, 6).toUpperCase()})
+                  </option>
+                ))}
+                {linkedPatients.length === 0 && user?.role === 'PATIENT' && (
+                  <option value={user.profileId} className="bg-slate-900 text-white">
+                    Paciente: {user.name} (#{shortProfileCode})
+                  </option>
+                )}
+                <option value="__ROLE_PROFESSIONAL__" className="bg-slate-900 text-indigo-300 font-bold">
+                  Modo Médico (Prescrever · Mesmo Login)
+                </option>
+                {user?.role === 'PROFESSIONAL' && linkedPatients.length === 0 && (
+                  <option value="__ROLE_PATIENT__" className="bg-slate-900 text-teal-300 font-bold">
+                    Modo Paciente (Mesmo Login)
+                  </option>
+                )}
+              </select>
+            </div>
+
             {/* Real User Profile Information Button (No Mocks!) */}
             <button
               type="button"
@@ -74,8 +140,8 @@ export const WebLayout: React.FC<WebLayoutProps> = ({
               <span className="font-bold text-white text-xs hidden sm:inline max-w-[130px] truncate">
                 {user?.name || 'Meu Perfil'}
               </span>
-              <span className="text-[10px] font-bold text-teal-300 bg-teal-500/20 px-1.5 py-0.5 rounded-md border border-teal-500/30">
-                Meus Dados
+              <span className="text-[10px] font-mono font-bold text-teal-300 bg-teal-500/20 px-1.5 py-0.5 rounded-md border border-teal-500/30">
+                #{shortProfileCode || 'ID'}
               </span>
             </button>
 

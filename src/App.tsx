@@ -120,10 +120,18 @@ const MainApp: React.FC = () => {
         ) : (
           <WebDoctorDashboard
             key={refreshTrigger}
-            onOpenNewAppointment={() => setIsNewAppointmentOpen(true)}
+            onOpenNewAppointment={(pId) => {
+              setSelectedPatientId(pId || null);
+              setIsNewAppointmentOpen(true);
+            }}
             onOpenAddMedication={(pId) => {
               setEditingMedication(null);
               setSelectedPatientId(pId || null);
+              setIsAddMedModalOpen(true);
+            }}
+            onEditMedication={(med) => {
+              setEditingMedication(med);
+              setSelectedPatientId(med.patientId || null);
               setIsAddMedModalOpen(true);
             }}
             onOpenNotificationCenter={() => setIsNotificationModalOpen(true)}
@@ -180,7 +188,11 @@ const MainApp: React.FC = () => {
           setEditingMedication(null);
         }}
         onSuccess={triggerRefresh}
-        patientId={selectedPatientId || user.profileId || user.id}
+        patientId={
+          user.role === 'PROFESSIONAL'
+            ? selectedPatientId || undefined
+            : selectedPatientId || user.profileId || user.id
+        }
         medicationToEdit={editingMedication}
       />
 

@@ -30,6 +30,7 @@ import {
   Filter,
   Pencil,
   Lock,
+  Trash2,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { PatientSummary, BloodPressureRecord, GlucoseRecord, Medication, Appointment } from '../../types';
@@ -136,6 +137,18 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
       setTimeout(() => setTestReminderSent(false), 3500);
     } catch (e) {
       console.error('Failed to test reminder:', e);
+    }
+  };
+
+  const handleDeleteMedication = async (medId: string, medName: string) => {
+    if (!window.confirm(`Tem certeza que deseja excluir o medicamento "${medName}"?`)) {
+      return;
+    }
+    try {
+      await api.deleteMedication(medId);
+      setMedications((prev) => prev.filter((m) => m.id !== medId));
+    } catch (e: any) {
+      alert(e.message || 'Erro ao excluir medicamento.');
     }
   };
 
@@ -1213,7 +1226,7 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
               {medications.map((med) => {
                 const isDoctorMed =
                   med.addedByRole === 'PROFESSIONAL' ||
-                  Boolean(med.prescribedBy) ||
+                  (Boolean(med.prescribedBy) && med.prescribedBy !== 'Paciente') ||
                   ['med-1', 'med-2', 'med-3'].includes(med.id);
 
                 return (
@@ -1283,16 +1296,27 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
                           <span className="text-teal-700 dark:text-teal-400 font-medium">
                             Cadastrado por você
                           </span>
-                          {onEditMedication && (
+                          <div className="flex items-center gap-1.5">
+                            {onEditMedication && (
+                              <button
+                                type="button"
+                                onClick={() => onEditMedication(med)}
+                                className="px-2.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs transition inline-flex items-center gap-1 shadow-xs cursor-pointer"
+                                title="Editar medicamento"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                <span>Editar</span>
+                              </button>
+                            )}
                             <button
                               type="button"
-                              onClick={() => onEditMedication(med)}
-                              className="px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs transition inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
+                              onClick={() => handleDeleteMedication(med.id, med.name)}
+                              className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 transition cursor-pointer"
+                              title="Excluir medicamento"
                             >
-                              <Pencil className="w-3.5 h-3.5" />
-                              <span>Editar</span>
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
-                          )}
+                          </div>
                         </>
                       )}
                     </div>

@@ -31,51 +31,30 @@ export const NewPatientModal: React.FC<NewPatientModalProps> = ({ isOpen, onClos
     setError(null);
 
     try {
-      const patientId = 'pat-' + Date.now();
-      const newPatient: Patient = {
-        id: patientId,
-        userId: 'u-' + Date.now(),
-        name,
-        email: email || `${name.toLowerCase().replace(/[^a-z0-9]/g, '')}@saude.gov.br`,
+      const mappedRisk = (riskLevel === 'MUITO_ALTO' ? 'ALTO' : riskLevel === 'MEDIO' ? 'MODERADO' : riskLevel) as RiskLevel;
+      const createdPatient = await api.createDoctorPatient({
+        name: name.trim(),
+        email: email.trim() || undefined,
         age,
-        gender: 'Indefinido',
+        gender: 'Não informado',
         conditions: ['Hipertensão Arterial Sistêmica'],
-        riskLevel: (riskLevel === 'MUITO_ALTO' ? 'ALTO' : riskLevel === 'MEDIO' ? 'MODERADO' : riskLevel) as RiskLevel,
-        healthcareUnit: 'UBS Central de Referência - ESF 01',
-        adherenceRate: 85,
-        latestBP: `${systolic}/${diastolic} mmHg`,
-        lastMeasuredAt: new Date().toISOString(),
-      };
+        riskLevel: mappedRisk,
+        healthcareUnit: 'UBS Dr. Manoel de Abreu',
+        systolic,
+        diastolic,
+      });
 
-      // Persiste no Firestore
+      // Persiste também no Firestore caso autenticado via Firebase
       try {
-        await FirestoreClinicalService.savePatient(newPatient);
-        if (systolic && diastolic) {
-          await FirestoreClinicalService.recordBloodPressure({
-            id: 'bp-' + Date.now(),
-            patientId,
-            systolic,
-            diastolic,
-            pulse: 75,
-            recordedAt: new Date().toISOString(),
-            notes: 'Aferição inicial de triagem no cadastramento ambulatorial.',
-            isCritical: systolic >= 160 || diastolic >= 100,
-            statusText:
-              systolic >= 160 || diastolic >= 100
-                ? 'Crítica'
-                : systolic >= 140 || diastolic >= 90
-                ? 'Atenção'
-                : 'Normal',
-          });
-        }
+        await FirestoreClinicalService.savePatient(createdPatient);
       } catch (fsErr) {
-        console.warn('[Firestore] Registro salvo localmente, erro Firestore:', fsErr);
+        console.warn('[Firestore] Registro salvo no banco principal, aviso Firestore:', fsErr);
       }
 
       showNotification({
         type: 'GENERAL',
         title: 'Novo Paciente Cadastrado',
-        body: `${name} foi adicionado com sucesso e persistido no prontuário.`,
+        body: `${createdPatient.name} foi adicionado com sucesso e sincronizado com o banco de dados.`,
       });
       onSuccess();
       onClose();

@@ -236,13 +236,19 @@ export async function saveMedicationToSupabase(formData: {
     const userId = getCurrentFirebaseUid(formData.fallbackUserId);
     if (!supabase) return null;
 
+    const notesWithRole =
+      formData.addedByRole === 'PROFESSIONAL' &&
+      !(formData.notes || '').includes('[Prescrito pelo Médico]')
+        ? `${formData.notes ? formData.notes + ' ' : ''}[Prescrito pelo Médico]`
+        : formData.notes || null;
+
     const { data, error } = await supabase
       .from('medications')
       .upsert(
         [
           {
             id: formData.id || `med-${Date.now()}`,
-            user_id: userId,
+            user_id: formData.patientId || userId,
             patient_id: formData.patientId || `pat-${userId}`,
             name: formData.name,
             dosage: formData.dosage,
@@ -250,7 +256,7 @@ export async function saveMedicationToSupabase(formData: {
             reminder_times: formData.reminderTimes || ['08:00'],
             status: 'ATIVO',
             is_active: true,
-            notes: formData.notes || null,
+            notes: notesWithRole,
           },
         ],
         { onConflict: 'id' }
@@ -473,17 +479,25 @@ export async function fetchMedicationsFromSupabase(patientId?: string): Promise<
       .eq('patient_id', patientId)
       .order('created_at', { ascending: false });
     if (error || !data) return [];
-    return data.map((d: any) => ({
-      id: d.id,
-      patientId: d.patient_id,
-      name: d.name,
-      dosage: d.dosage,
-      frequency: d.frequency,
-      reminderTimes: d.reminder_times || ['08:00'],
-      status: (d.status || (d.is_active ? 'ATIVO' : 'SUSPENSO')) as 'ATIVO' | 'SUSPENSO' | 'CONCLUIDO',
-      notes: d.notes,
-      createdAt: d.created_at,
-    }));
+    return data.map((d: any) => {
+      const isDoc =
+        d.added_by_role === 'PROFESSIONAL' ||
+        Boolean(d.prescribed_by) ||
+        (typeof d.notes === 'string' && d.notes.includes('[Prescrito pelo Médico]'));
+      return {
+        id: d.id,
+        patientId: d.patient_id,
+        name: d.name,
+        dosage: d.dosage,
+        frequency: d.frequency,
+        reminderTimes: d.reminder_times || ['08:00'],
+        status: (d.status || (d.is_active ? 'ATIVO' : 'SUSPENSO')) as 'ATIVO' | 'SUSPENSO' | 'CONCLUIDO',
+        notes: d.notes,
+        addedByRole: isDoc ? 'PROFESSIONAL' : 'PATIENT',
+        prescribedBy: d.prescribed_by || (isDoc ? 'Médico da Equipe ESF' : undefined),
+        createdAt: d.created_at,
+      };
+    });
   } catch {
     return [];
   }

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { ArrowLeft, Calendar, Clock, MapPin, Stethoscope } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, Calendar, Clock, MapPin, Stethoscope, User } from 'lucide-react';
 import { api } from '../../services/api';
+import { Patient } from '../../types';
 
 interface NewAppointmentModalProps {
   isOpen: boolean;
@@ -15,13 +16,28 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
   onSuccess,
   patientId,
 }) => {
-  const [dateStr, setDateStr] = useState('2025-05-22');
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [selectedPatientId, setSelectedPatientId] = useState<string>(patientId || 'pat-maria');
+  const [dateStr, setDateStr] = useState(() => new Date(Date.now() + 86400000).toISOString().slice(0, 10));
   const [timeStr, setTimeStr] = useState('09:00');
   const [appointmentType, setAppointmentType] = useState('Consulta de rotina');
-  const [clinicName, setClinicName] = useState('Clínica da Família Santa Marta');
+  const [clinicName, setClinicName] = useState('UBS Dr. Manoel de Abreu');
   const [notes, setNotes] = useState('Avaliação de controle de pressão arterial e teste de hemoglobina glicada.');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      api.getDoctorPatients().then((list) => {
+        setPatients(list);
+        if (patientId && list.some((p) => p.id === patientId)) {
+          setSelectedPatientId(patientId);
+        } else if (list.length > 0) {
+          setSelectedPatientId(list[0].id);
+        }
+      }).catch(() => {});
+    }
+  }, [isOpen, patientId]);
 
   if (!isOpen) return null;
 
@@ -31,8 +47,12 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
     setError(null);
     try {
       const scheduledFor = new Date(`${dateStr}T${timeStr}:00`).toISOString();
+      const chosenPatient = patients.find((p) => p.id === selectedPatientId);
       await api.createAppointment({
-        patientId,
+        patientId: selectedPatientId || patientId,
+        patientName: chosenPatient?.name,
+        patientAge: chosenPatient?.age,
+        patientConditions: chosenPatient?.conditions,
         scheduledFor,
         appointmentType,
         clinicName,
@@ -70,6 +90,26 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
               {error}
             </div>
           )}
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Paciente Cadastrado
+            </label>
+            <div className="relative">
+              <User className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+              <select
+                value={selectedPatientId}
+                onChange={(e) => setSelectedPatientId(e.target.value)}
+                className="w-full pl-9 pr-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:ring-2 focus:ring-teal-600 outline-none"
+              >
+                {patients.map((pt) => (
+                  <option key={pt.id} value={pt.id}>
+                    {pt.name} ({pt.age} anos · Risco {pt.riskLevel})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">

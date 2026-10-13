@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
-import { ArrowLeft, BellRing, AlertTriangle, Send } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, BellRing, Send } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationContext';
-import { FirestoreClinicalService } from '../../services/firestoreService';
-import { ClinicalAlert } from '../../types';
+import { api } from '../../services/api';
+import { Patient } from '../../types';
 
 interface DoctorQuickAlertModalProps {
   isOpen: boolean;
@@ -16,7 +16,8 @@ export const DoctorQuickAlertModal: React.FC<DoctorQuickAlertModalProps> = ({
   onSuccess,
 }) => {
   const { showNotification } = useNotifications();
-  const [targetPatient, setTargetPatient] = useState('Maria Silva');
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [selectedPatientId, setSelectedPatientId] = useState('pat-maria');
   const [severity, setSeverity] = useState<'CRITICAL' | 'WARNING' | 'INFO'>('WARNING');
   const [title, setTitle] = useState('Alerta de Acompanhamento Pressórico');
   const [message, setMessage] = useState(
@@ -24,33 +25,44 @@ export const DoctorQuickAlertModal: React.FC<DoctorQuickAlertModalProps> = ({
   );
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (isOpen) {
+      api.getDoctorPatients().then((list) => {
+        setPatients(list);
+        if (list.length > 0 && !list.some((p) => p.id === selectedPatientId)) {
+          setSelectedPatientId(list[0].id);
+        }
+      }).catch(() => {});
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
+    const chosenPatient = patients.find((p) => p.id === selectedPatientId);
+    const targetName = chosenPatient?.name || 'Maria Silva';
+
     try {
-      const alertItem: ClinicalAlert = {
-        id: 'alt-' + Date.now(),
-        patientId: 'pat-maria',
-        patientName: targetPatient,
+      await api.createAlert({
+        patientId: selectedPatientId || 'pat-maria',
+        patientName: targetName,
         severity: severity === 'CRITICAL' ? 'CRITICO' : severity === 'WARNING' ? 'ATENCAO' : 'INFO',
         title,
         message,
+        valueRecorded: 'Conduta Médica',
         metricType: 'PRESSURE',
-        status: 'PENDENTE',
-        triggeredAt: new Date().toISOString(),
-      };
-      await FirestoreClinicalService.createClinicalAlert(alertItem);
+      });
     } catch (e) {
-      console.warn('[Firestore] Alerta registrado localmente, erro Firestore:', e);
+      console.warn('[Alerta] Erro ao salvar alerta:', e);
     }
 
     showNotification({
       type: severity === 'CRITICAL' ? 'CRITICAL_READING' : 'GENERAL',
       title: `Alerta Clínico: ${title}`,
-      body: `Enviado para ${targetPatient}: ${message}`,
+      body: `Enviado para ${targetName}: ${message}`,
     });
 
     setLoading(false);
@@ -84,16 +96,15 @@ export const DoctorQuickAlertModal: React.FC<DoctorQuickAlertModalProps> = ({
               Paciente de Destino
             </label>
             <select
-              value={targetPatient}
-              onChange={(e) => setTargetPatient(e.target.value)}
+              value={selectedPatientId}
+              onChange={(e) => setSelectedPatientId(e.target.value)}
               className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-600 outline-none"
             >
-              <option value="Maria Silva">Maria Silva (68 anos - Alto Risco)</option>
-              <option value="Carlos Eduardo">Carlos Eduardo (54 anos - Moderado)</option>
-              <option value="Ana Beatriz">Ana Beatriz (72 anos - Alto Risco)</option>
-              <option value="Todos os pacientes de alto risco">
-                📢 Todos os Pacientes com PA &gt; 140/90
-              </option>
+              {patients.map((pt) => (
+                <option key={pt.id} value={pt.id}>
+                  {pt.name} ({pt.age} anos · Risco {pt.riskLevel})
+                </option>
+              ))}
             </select>
           </div>
 

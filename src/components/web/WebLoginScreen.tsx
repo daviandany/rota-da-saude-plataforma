@@ -35,17 +35,35 @@ import {
 type ScreenTab = 'LOGIN' | 'REGISTER' | 'FORGOT_PASSWORD' | 'RESET_PASSWORD';
 
 export const WebLoginScreen: React.FC = () => {
-  const { login, register, loginGoogle, isFirebaseConnected } = useAuth();
+  const { login, register, loginDemo, loginGoogle, isFirebaseConnected } = useAuth();
   
   // Navigation tab
   const [tab, setTab] = useState<ScreenTab>('LOGIN');
 
-  // Form Fields for Login / Register (Clean without mocks)
+  // Form Fields for Login / Register
   const [selectedRole, setSelectedRole] = useState<UserRole>('PATIENT');
   const [name, setName] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
+
+  const handleRoleSwitch = (role: UserRole) => {
+    setSelectedRole(role);
+    setError(null);
+  };
+
+  const handleQuickDemoLogin = async (role: UserRole) => {
+    setError(null);
+    setLoading(true);
+    setSelectedRole(role);
+    try {
+      await loginDemo(role);
+    } catch (err: any) {
+      setError(err.message || 'Erro ao acessar conta institucional.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Additional fields for Register
   const [age, setAge] = useState<number>(45);
@@ -125,7 +143,7 @@ export const WebLoginScreen: React.FC = () => {
     setError(null);
     setGoogleLoading(true);
     try {
-      await loginGoogle(selectedRole, email);
+      await loginGoogle(selectedRole, email, name.trim() || undefined);
     } catch (err: any) {
       if (err.code === 'auth/popup-closed-by-user') {
         setError('O popup do Google foi fechado antes de completar o login.');
@@ -316,13 +334,7 @@ export const WebLoginScreen: React.FC = () => {
         {/* Right Column: Authentication Form with Google & User Information Inputs */}
         <div className="lg:col-span-7 p-6 sm:p-8 lg:p-10 flex flex-col justify-between bg-white dark:bg-slate-900 transition-colors relative">
           {/* Top Header Actions */}
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300">
-                {isFirebaseConnected ? 'Firebase & Firestore Online' : 'Banco de Dados Conectado'}
-              </span>
-            </div>
+          <div className="flex items-center justify-end mb-5">
             <ThemeToggle />
           </div>
 
@@ -552,16 +564,13 @@ export const WebLoginScreen: React.FC = () => {
                     <span className="text-[11px] font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400">
                       Acesso Rápido com Google
                     </span>
-                    <span className="text-[10px] text-slate-500 dark:text-slate-400">
-                      Sincronização com Firebase
-                    </span>
                   </div>
 
                   {/* Role Selector before Google Sign In */}
                   <div className="grid grid-cols-2 gap-2 mb-3 bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
                     <button
                       type="button"
-                      onClick={() => setSelectedRole('PATIENT')}
+                      onClick={() => handleRoleSwitch('PATIENT')}
                       className={`py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                         selectedRole === 'PATIENT'
                           ? 'bg-teal-700 text-white shadow-xs'
@@ -573,7 +582,7 @@ export const WebLoginScreen: React.FC = () => {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSelectedRole('PROFESSIONAL')}
+                      onClick={() => handleRoleSwitch('PROFESSIONAL')}
                       className={`py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                         selectedRole === 'PROFESSIONAL'
                           ? 'bg-blue-700 text-white shadow-xs'
@@ -582,6 +591,28 @@ export const WebLoginScreen: React.FC = () => {
                     >
                       <Stethoscope className="w-3.5 h-3.5" />
                       <span>Sou Médico / Profissional</span>
+                    </button>
+                  </div>
+
+                  {/* Quick 1-Click Institutional Logins Aligned with Database */}
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickDemoLogin('PATIENT')}
+                      disabled={loading || googleLoading}
+                      className="py-2 px-2.5 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/70 dark:hover:bg-teal-900/70 text-teal-800 dark:text-teal-200 border border-teal-200 dark:border-teal-800 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <User className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
+                      <span className="truncate">Entrar: Maria Silva (Paciente)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickDemoLogin('PROFESSIONAL')}
+                      disabled={loading || googleLoading}
+                      className="py-2 px-2.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/70 dark:hover:bg-blue-900/70 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Stethoscope className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                      <span className="truncate">Entrar: Dr. Carlos (Médico)</span>
                     </button>
                   </div>
 
@@ -669,7 +700,11 @@ export const WebLoginScreen: React.FC = () => {
                   {/* Nome (se cadastro ou login com novo nome) */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      {tab === 'REGISTER' ? 'Nome Completo *' : 'Seu Nome (Opcional no login)'}
+                      {tab === 'REGISTER'
+                        ? 'Nome Completo *'
+                        : selectedRole === 'PATIENT'
+                        ? 'Nome do Paciente (Permite identificar cada paciente no mesmo login)'
+                        : 'Nome do Médico / Profissional'}
                     </label>
                     <div className="relative">
                       <User className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -678,7 +713,11 @@ export const WebLoginScreen: React.FC = () => {
                         required={tab === 'REGISTER'}
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        placeholder="Ex: Davi Silva ou Dra. Patrícia Lima"
+                        placeholder={
+                          selectedRole === 'PROFESSIONAL'
+                            ? 'Dr. Carlos Mendes'
+                            : 'Maria Silva'
+                        }
                         className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition"
                       />
                     </div>
@@ -696,7 +735,11 @@ export const WebLoginScreen: React.FC = () => {
                         required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder="seu.email@exemplo.com"
+                        placeholder={
+                          selectedRole === 'PROFESSIONAL'
+                            ? 'carlos.mendes@saude.gov.br'
+                            : 'maria.silva@email.com'
+                        }
                         className="w-full pl-9 pr-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition"
                       />
                     </div>
@@ -776,7 +819,7 @@ export const WebLoginScreen: React.FC = () => {
                         required
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
+                        placeholder="Digite sua senha"
                         className="w-full pl-9 pr-10 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-teal-600 focus:border-transparent transition"
                       />
                       <button

@@ -5,6 +5,7 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
   query,
   where,
   orderBy,
@@ -276,6 +277,18 @@ export class FirestoreClinicalService {
       return snaps.docs.map((d) => d.data() as Medication);
     } catch (error) {
       handleFirestoreError(error, OperationType.LIST, colPath);
+    }
+  }
+
+  static async deleteMedication(id: string): Promise<boolean> {
+    if (!auth.currentUser) return true;
+    const docPath = `medications/${id}`;
+    try {
+      const medRef = doc(db, 'medications', id);
+      await deleteDoc(medRef);
+      return true;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, docPath);
     }
   }
 

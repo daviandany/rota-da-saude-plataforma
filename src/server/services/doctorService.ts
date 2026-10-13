@@ -94,4 +94,78 @@ export class DoctorService {
       alerts,
     };
   }
+
+  static async createPatient(payload: {
+    id?: string;
+    name: string;
+    email?: string;
+    age?: number;
+    gender?: string;
+    conditions?: string[];
+    riskLevel?: RiskLevel;
+    healthcareUnit?: string;
+    phone?: string;
+    systolic?: number;
+    diastolic?: number;
+    glucoseValue?: number;
+  }) {
+    const db = await getDatabase();
+    const cleanEmail =
+      payload.email?.trim().toLowerCase() ||
+      `${payload.name.toLowerCase().replace(/[^a-z0-9]/g, '')}.${Date.now().toString(36).slice(-4)}@paciente.rotadasaude.gov.br`;
+
+    const patientId = payload.id || 'pat-' + Date.now();
+    const userId = 'u-' + patientId.replace(/^pat-/, '');
+
+    // Cria também o registro de usuário correspondente no banco de dados para que o paciente exista de forma alinhada
+    const existingUser = await db.getUserByEmail(cleanEmail);
+    if (!existingUser) {
+      await db.createUser({
+        id: userId,
+        email: cleanEmail,
+        passwordHash: '$2a$10$demoPatientHash',
+        name: payload.name.trim(),
+        role: 'PATIENT',
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    const newPatient = await db.createPatient({
+      id: patientId,
+      userId: existingUser?.id || userId,
+      name: payload.name.trim(),
+      email: cleanEmail,
+      age: Number(payload.age || 55),
+      gender: payload.gender || 'Não informado',
+      conditions: payload.conditions && payload.conditions.length > 0 ? payload.conditions : ['HAS'],
+      riskLevel: payload.riskLevel || 'MODERADO',
+      healthcareUnit: payload.healthcareUnit || 'UBS Dr. Manoel de Abreu',
+      adherenceRate: 90,
+      phone: payload.phone || '(11) 98765-4321',
+      createdAt: new Date().toISOString(),
+    });
+
+    if (payload.systolic && payload.diastolic) {
+      await ClinicalService.recordBloodPressure({
+        patientId: newPatient.id,
+        systolic: Number(payload.systolic),
+        diastolic: Number(payload.diastolic),
+        pulse: 74,
+        recordedAt: new Date().toISOString(),
+        notes: 'Aferição inicial registrada pelo médico no cadastramento ambulatorial.',
+      });
+    }
+
+    if (payload.glucoseValue) {
+      await ClinicalService.recordGlucose({
+        patientId: newPatient.id,
+        glucoseValue: Number(payload.glucoseValue),
+        moment: 'EM_JEJUM',
+        recordedAt: new Date().toISOString(),
+        notes: 'Glicemia inicial registrada pelo médico.',
+      });
+    }
+
+    return newPatient;
+  }
 }
