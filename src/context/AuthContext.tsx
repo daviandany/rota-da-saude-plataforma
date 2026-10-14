@@ -99,8 +99,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsFirebaseConnected(true);
         localStorage.setItem('firebase_uid_hint', fbUser.uid);
 
-        // Se o Firebase Auth confirmar o usuário e o estado local ainda não estiver populado, sincroniza e redireciona para a dashboard
-        if (!localStorage.getItem('token')) {
+        // Se o Firebase Auth confirmar o usuário e o estado local ainda não estiver populado, sincroniza
+        if (!localStorage.getItem('token') && sessionStorage.getItem('explicit_logout') !== 'true') {
           try {
             const savedRole = (localStorage.getItem('preferred_role') as UserRole) || 'PATIENT';
             const res = await api.loginGoogleFirebase({
@@ -136,8 +136,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, pass: string, name?: string, role?: UserRole) => {
     try {
-      if (role) localStorage.setItem('preferred_role', role);
-      const res = await api.login(email, pass, name, role);
+      sessionStorage.removeItem('explicit_logout');
+      const targetRole =
+        role ||
+        (email.trim().toLowerCase() === 'carlos.mendes@saude.gov.br' ? 'PROFESSIONAL' : 'PATIENT');
+      localStorage.setItem('preferred_role', targetRole);
+      localStorage.setItem('active_user_role', targetRole);
+      const res = await api.login(email, pass, name, targetRole);
       setAuthToken(res.token);
       setToken(res.token);
       setUser(res.user);
@@ -171,7 +176,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginGoogle = async (role: UserRole, emailHint?: string, customPatientName?: string) => {
     try {
+      sessionStorage.removeItem('explicit_logout');
       localStorage.setItem('preferred_role', role);
+      localStorage.setItem('active_user_role', role);
       // 1. Popup Google login + sync to Firestore users collection
       const { firebaseUser } = await signInWithGoogle(
         role === 'PROFESSIONAL' ? 'PROFESSIONAL' : 'PATIENT',
@@ -223,6 +230,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       if (options.role) {
         localStorage.setItem('preferred_role', options.role);
+        localStorage.setItem('active_user_role', options.role);
       }
       const res = await api.switchPatientProfile(options);
       setAuthToken(res.token);
@@ -235,10 +243,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginDemo = async (role: UserRole) => {
     try {
+      sessionStorage.removeItem('explicit_logout');
       localStorage.setItem('preferred_role', role);
+      localStorage.setItem('active_user_role', role);
       const email = role === 'PATIENT' ? 'maria.silva@email.com' : 'carlos.mendes@saude.gov.br';
       const pass = role === 'PATIENT' ? 'paciente123' : 'medico123';
-      const res = await api.login(email, pass);
+      const res = await api.login(email, pass, undefined, role);
       setAuthToken(res.token);
       setToken(res.token);
       setUser(res.user);
@@ -249,13 +259,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    sessionStorage.setItem('explicit_logout', 'true');
+    localStorage.removeItem('token');
+    localStorage.removeItem('active_user_id');
+    localStorage.removeItem('active_profile_id');
+    localStorage.removeItem('active_user_role');
     setAuthToken(null);
     setToken(null);
     setUser(null);
     if (typeof window !== 'undefined') {
       window.history.replaceState({}, '', '/');
     }
-    await signOutFirebase();
+    await signOutFirebase().catch(() => {});
   };
 
   const refreshUser = async () => {

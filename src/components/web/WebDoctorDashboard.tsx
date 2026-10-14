@@ -1227,8 +1227,7 @@ export const WebDoctorDashboard: React.FC<WebDoctorDashboardProps> = ({
                           const patientCode = (med.patientId || '').replace(/^pat-/, '').slice(0, 8).toUpperCase();
                           const isDoc =
                             med.addedByRole === 'PROFESSIONAL' ||
-                            (Boolean(med.prescribedBy) && med.prescribedBy !== 'Paciente') ||
-                            ['med-1', 'med-2', 'med-3'].includes(med.id);
+                            (med.addedByRole !== 'PATIENT' && Boolean(med.prescribedBy) && med.prescribedBy !== 'Paciente');
 
                           return (
                             <tr key={med.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50 transition">

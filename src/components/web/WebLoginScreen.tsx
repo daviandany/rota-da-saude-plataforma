@@ -41,21 +41,44 @@ export const WebLoginScreen: React.FC = () => {
   const [tab, setTab] = useState<ScreenTab>('LOGIN');
 
   // Form Fields for Login / Register
-  const [selectedRole, setSelectedRole] = useState<UserRole>('PATIENT');
+  const [selectedRole, setSelectedRole] = useState<UserRole>(() => {
+    return (localStorage.getItem('preferred_role') as UserRole) || 'PATIENT';
+  });
   const [name, setName] = useState<string>('');
-  const [email, setEmail] = useState<string>('');
-  const [password, setPassword] = useState<string>('');
+  const [email, setEmail] = useState<string>(() => {
+    const r = localStorage.getItem('preferred_role');
+    return r === 'PROFESSIONAL' ? 'carlos.mendes@saude.gov.br' : 'maria.silva@email.com';
+  });
+  const [password, setPassword] = useState<string>(() => {
+    const r = localStorage.getItem('preferred_role');
+    return r === 'PROFESSIONAL' ? 'medico123' : 'paciente123';
+  });
   const [showPassword, setShowPassword] = useState<boolean>(false);
 
   const handleRoleSwitch = (role: UserRole) => {
     setSelectedRole(role);
+    localStorage.setItem('preferred_role', role);
+    localStorage.setItem('active_user_role', role);
     setError(null);
+    if (role === 'PROFESSIONAL') {
+      if (!email || email === 'maria.silva@email.com') {
+        setEmail('carlos.mendes@saude.gov.br');
+        setPassword('medico123');
+      }
+    } else {
+      if (!email || email === 'carlos.mendes@saude.gov.br') {
+        setEmail('maria.silva@email.com');
+        setPassword('paciente123');
+      }
+    }
   };
 
   const handleQuickDemoLogin = async (role: UserRole) => {
     setError(null);
     setLoading(true);
     setSelectedRole(role);
+    localStorage.setItem('preferred_role', role);
+    localStorage.setItem('active_user_role', role);
     try {
       await loginDemo(role);
     } catch (err: any) {
@@ -558,74 +581,139 @@ export const WebLoginScreen: React.FC = () => {
             {/* TAB: LOGIN or REGISTER */}
             {(tab === 'LOGIN' || tab === 'REGISTER') && (
               <>
-                {/* 1. Primary Google Login Button (First & Seamless) */}
-                <div className="mb-6 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+                {/* 1. SELETOR PRINCIPAL DE PAPEL (MÉDICO VS PACIENTE) - INCONFUNDÍVEL */}
+                <div className="mb-5">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-teal-700 dark:text-teal-400">
-                      Acesso Rápido com Google
+                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      1. Selecione quem está acessando:
+                    </span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                        selectedRole === 'PROFESSIONAL'
+                          ? 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+                          : 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                      }`}
+                    >
+                      {selectedRole === 'PROFESSIONAL' ? 'Área Médica' : 'Área do Paciente'}
                     </span>
                   </div>
 
-                  {/* Role Selector before Google Sign In */}
-                  <div className="grid grid-cols-2 gap-2 mb-3 bg-white dark:bg-slate-900 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
-                    <button
-                      type="button"
-                      onClick={() => handleRoleSwitch('PATIENT')}
-                      className={`py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                        selectedRole === 'PATIENT'
-                          ? 'bg-teal-700 text-white shadow-xs'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                      }`}
-                    >
-                      <User className="w-3.5 h-3.5" />
-                      <span>Sou Paciente</span>
-                    </button>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {/* Botão Médico */}
                     <button
                       type="button"
                       onClick={() => handleRoleSwitch('PROFESSIONAL')}
-                      className={`py-1.5 px-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      className={`p-3 rounded-2xl border-2 text-left transition flex items-center gap-3 cursor-pointer ${
                         selectedRole === 'PROFESSIONAL'
-                          ? 'bg-blue-700 text-white shadow-xs'
-                          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                          ? 'bg-blue-50/90 dark:bg-blue-950/80 border-blue-600 dark:border-blue-500 text-blue-950 dark:text-blue-100 shadow-sm ring-2 ring-blue-500/20'
+                          : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
                       }`}
                     >
-                      <Stethoscope className="w-3.5 h-3.5" />
-                      <span>Sou Médico / Profissional</span>
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                          selectedRole === 'PROFESSIONAL'
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                        }`}
+                      >
+                        <Stethoscope className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-black truncate">
+                          Médico / Equipe
+                        </div>
+                        <div className="text-[10px] opacity-75 truncate">
+                          Dr. Carlos · Prescrições
+                        </div>
+                      </div>
                     </button>
-                  </div>
 
-                  {/* Quick 1-Click Institutional Logins Aligned with Database */}
-                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    {/* Botão Paciente */}
                     <button
                       type="button"
-                      onClick={() => handleQuickDemoLogin('PATIENT')}
-                      disabled={loading || googleLoading}
-                      className="py-2 px-2.5 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/70 dark:hover:bg-teal-900/70 text-teal-800 dark:text-teal-200 border border-teal-200 dark:border-teal-800 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      onClick={() => handleRoleSwitch('PATIENT')}
+                      className={`p-3 rounded-2xl border-2 text-left transition flex items-center gap-3 cursor-pointer ${
+                        selectedRole === 'PATIENT'
+                          ? 'bg-teal-50/90 dark:bg-teal-950/80 border-teal-600 dark:border-teal-500 text-teal-950 dark:text-teal-100 shadow-sm ring-2 ring-teal-500/20'
+                          : 'bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/60 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'
+                      }`}
                     >
-                      <User className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
-                      <span className="truncate">Entrar: Maria Silva (Paciente)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleQuickDemoLogin('PROFESSIONAL')}
-                      disabled={loading || googleLoading}
-                      className="py-2 px-2.5 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/70 dark:hover:bg-blue-900/70 text-blue-800 dark:text-blue-200 border border-blue-200 dark:border-blue-800 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
-                    >
-                      <Stethoscope className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-                      <span className="truncate">Entrar: Dr. Carlos (Médico)</span>
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                          selectedRole === 'PATIENT'
+                            ? 'bg-teal-600 text-white'
+                            : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                        }`}
+                      >
+                        <User className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-black truncate">
+                          Paciente SUS
+                        </div>
+                        <div className="text-[10px] opacity-75 truncate">
+                          Rota da Saúde
+                        </div>
+                      </div>
                     </button>
                   </div>
+                </div>
 
+                {/* Banner de Confirmação do Modo Selecionado */}
+                <div
+                  className={`p-3 rounded-2xl border mb-5 flex items-center gap-2.5 text-xs transition ${
+                    selectedRole === 'PROFESSIONAL'
+                      ? 'bg-blue-50/80 dark:bg-blue-950/40 border-blue-200 dark:border-blue-900 text-blue-900 dark:text-blue-200'
+                      : 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900 text-emerald-900 dark:text-emerald-200'
+                  }`}
+                >
+                  {selectedRole === 'PROFESSIONAL' ? (
+                    <Stethoscope className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                  ) : (
+                    <Heart className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  )}
+                  <span className="font-semibold text-[11px] leading-tight">
+                    {selectedRole === 'PROFESSIONAL'
+                      ? 'Você entrará como Dr. Carlos Mendes (Médico da UBS · Prescreverá medicamentos e gerenciará pacientes).'
+                      : 'Você entrará como Paciente (Acessará seu plano terapêutico, registros de pressão e glicemia).'}
+                  </span>
+                </div>
+
+                {/* Acesso Rápido com 1 Clique (Alinhado ao Papel Selecionado) */}
+                <div className="mb-5 space-y-2.5">
+                  <button
+                    type="button"
+                    onClick={() => handleQuickDemoLogin(selectedRole)}
+                    disabled={loading || googleLoading}
+                    className={`w-full py-3 px-4 rounded-xl text-xs font-black transition flex items-center justify-center gap-2.5 shadow-sm active:scale-[0.99] cursor-pointer border ${
+                      selectedRole === 'PROFESSIONAL'
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white border-blue-700'
+                        : 'bg-teal-600 hover:bg-teal-700 text-white border-teal-700'
+                    }`}
+                  >
+                    {selectedRole === 'PROFESSIONAL' ? (
+                      <Stethoscope className="w-4 h-4 shrink-0" />
+                    ) : (
+                      <User className="w-4 h-4 shrink-0" />
+                    )}
+                    <span>
+                      {selectedRole === 'PROFESSIONAL'
+                        ? 'Entrar Agora como Médico: Dr. Carlos Mendes'
+                        : 'Entrar Agora como Paciente: Maria Silva'}
+                    </span>
+                  </button>
+
+                  {/* Botão Google com Papel Explícito */}
                   <button
                     type="button"
                     onClick={handleGoogleSignIn}
                     disabled={loading || googleLoading}
-                    className="w-full py-3 px-4 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-750 text-slate-800 dark:text-white border-2 border-slate-300 dark:border-slate-600 rounded-xl text-xs font-black transition flex items-center justify-center gap-3 shadow-sm hover:shadow-md active:scale-[0.99] cursor-pointer"
+                    className="w-full py-2.5 px-4 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-white border-2 border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2.5 shadow-xs cursor-pointer"
                   >
                     {googleLoading ? (
                       <div className="w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
                     ) : (
-                      <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                         <path
                           fill="#4285F4"
                           d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -647,22 +735,22 @@ export const WebLoginScreen: React.FC = () => {
                     <span>
                       {googleLoading
                         ? 'Conectando conta Google...'
-                        : `Entrar com o Google (${selectedRole === 'PATIENT' ? 'Paciente' : 'Profissional'})`}
+                        : `Entrar com Google como ${selectedRole === 'PROFESSIONAL' ? 'Médico' : 'Paciente'}`}
                     </span>
                   </button>
                 </div>
 
-                <div className="relative my-5 text-center">
+                <div className="relative my-4 text-center">
                   <div className="absolute inset-0 flex items-center">
                     <div className="w-full border-t border-slate-200 dark:border-slate-800" />
                   </div>
                   <span className="relative px-3 bg-white dark:bg-slate-900 text-[11px] font-semibold text-slate-400">
-                    ou acesse com seu e-mail e senha
+                    ou digite outro e-mail e senha
                   </span>
                 </div>
 
                 {/* Tab Switcher: Entrar vs Cadastrar-se */}
-                <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl mb-5 border border-slate-200 dark:border-slate-700">
+                <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl mb-4 border border-slate-200 dark:border-slate-700">
                   <button
                     type="button"
                     onClick={() => {
@@ -671,12 +759,12 @@ export const WebLoginScreen: React.FC = () => {
                     }}
                     className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                       tab === 'LOGIN'
-                        ? 'bg-white dark:bg-slate-700 text-teal-900 dark:text-white shadow-xs'
+                        ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                     }`}
                   >
                     <Lock className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-                    <span>Entrar no Sistema</span>
+                    <span>Entrar com E-mail</span>
                   </button>
                   <button
                     type="button"
@@ -686,12 +774,12 @@ export const WebLoginScreen: React.FC = () => {
                     }}
                     className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                       tab === 'REGISTER'
-                        ? 'bg-white dark:bg-slate-700 text-teal-900 dark:text-white shadow-xs'
+                        ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
                     }`}
                   >
                     <UserCheck className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-                    <span>Criar Nova Conta</span>
+                    <span>Cadastrar Novo {selectedRole === 'PROFESSIONAL' ? 'Médico' : 'Paciente'}</span>
                   </button>
                 </div>
 
@@ -701,10 +789,12 @@ export const WebLoginScreen: React.FC = () => {
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                       {tab === 'REGISTER'
-                        ? 'Nome Completo *'
-                        : selectedRole === 'PATIENT'
-                        ? 'Nome do Paciente (Permite identificar cada paciente no mesmo login)'
-                        : 'Nome do Médico / Profissional'}
+                        ? selectedRole === 'PROFESSIONAL'
+                          ? 'Nome do Médico / Profissional *'
+                          : 'Nome Completo do Paciente *'
+                        : selectedRole === 'PROFESSIONAL'
+                        ? 'Nome do Médico (Opcional)'
+                        : 'Nome do Paciente (Permite identificar cada paciente no mesmo login)'}
                     </label>
                     <div className="relative">
                       <User className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -726,7 +816,7 @@ export const WebLoginScreen: React.FC = () => {
                   {/* E-mail */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                      E-mail *
+                      {selectedRole === 'PROFESSIONAL' ? 'E-mail Profissional *' : 'E-mail do Paciente *'}
                     </label>
                     <div className="relative">
                       <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -836,14 +926,18 @@ export const WebLoginScreen: React.FC = () => {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3 bg-teal-800 hover:bg-teal-900 active:scale-[0.99] text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer mt-2"
+                    className={`w-full py-3.5 active:scale-[0.99] text-white font-black text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2 cursor-pointer mt-2 ${
+                      selectedRole === 'PROFESSIONAL'
+                        ? 'bg-blue-700 hover:bg-blue-800'
+                        : 'bg-teal-700 hover:bg-teal-800'
+                    }`}
                   >
                     <span>
                       {loading
                         ? 'Validando...'
                         : tab === 'REGISTER'
-                        ? 'Criar Conta e Acessar'
-                        : 'Entrar no Sistema'}
+                        ? `Cadastrar e Acessar como ${selectedRole === 'PROFESSIONAL' ? 'Médico' : 'Paciente'}`
+                        : `Entrar como ${selectedRole === 'PROFESSIONAL' ? 'Médico / Profissional' : 'Paciente SUS'}`}
                     </span>
                     <ArrowRight className="w-4 h-4" />
                   </button>

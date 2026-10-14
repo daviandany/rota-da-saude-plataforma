@@ -150,12 +150,21 @@ export class AuthService {
     email: string,
     password: string,
     name?: string,
-    role: UserRole = 'PATIENT',
+    role?: UserRole,
     patientId?: string
   ) {
     const db = await getDatabase();
     const normalizedEmail = email.trim().toLowerCase();
     let user = await db.getUserByEmail(normalizedEmail);
+
+    const isDoctorInstitutionalEmail =
+      normalizedEmail === 'carlos.mendes@saude.gov.br' ||
+      normalizedEmail.includes('medico') ||
+      (normalizedEmail.endsWith('@saude.gov.br') && !normalizedEmail.includes('paciente'));
+
+    const effectiveRole: UserRole =
+      role ||
+      (user ? user.role : isDoctorInstitutionalEmail ? 'PROFESSIONAL' : 'PATIENT');
 
     if (!user) {
       // Auto-registra o cliente com ID determinístico único baseado no e-mail
@@ -174,7 +183,7 @@ export class AuthService {
         email: normalizedEmail,
         passwordHash,
         name: displayName,
-        role: role || 'PATIENT',
+        role: effectiveRole,
         createdAt: new Date().toISOString(),
       };
 
@@ -190,12 +199,13 @@ export class AuthService {
         }
       }
 
-      // Alinha o papel (role) caso o usuário selecione explicitamente Médico ou Paciente no login
-      if (role && user.role !== role) {
-        user.role = role;
+      // Se o usuário selecionou explicitamente um papel ou se é a conta institucional do médico
+      const targetRole = role || (isDoctorInstitutionalEmail ? 'PROFESSIONAL' : user.role);
+      if (user.role !== targetRole) {
+        user.role = targetRole;
         await db.createUser(user);
       }
-      if (name && name.trim() && role === 'PROFESSIONAL' && user.name !== name.trim()) {
+      if (name && name.trim() && targetRole === 'PROFESSIONAL' && user.name !== name.trim()) {
         user.name = name.trim();
         await db.createUser(user);
       }

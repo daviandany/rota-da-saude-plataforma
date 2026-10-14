@@ -1226,8 +1226,7 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
               {medications.map((med) => {
                 const isDoctorMed =
                   med.addedByRole === 'PROFESSIONAL' ||
-                  (Boolean(med.prescribedBy) && med.prescribedBy !== 'Paciente') ||
-                  ['med-1', 'med-2', 'med-3'].includes(med.id);
+                  (med.addedByRole !== 'PATIENT' && Boolean(med.prescribedBy) && med.prescribedBy !== 'Paciente');
 
                 return (
                   <div

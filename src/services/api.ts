@@ -430,7 +430,7 @@ export const api = {
     prescribedBy?: string;
   }): Promise<Medication> {
     const resolvedPatientId = getActivePatientId(payload.patientId);
-    const activeRole = localStorage.getItem('active_user_role') || payload.addedByRole || 'PATIENT';
+    const activeRole = payload.addedByRole || localStorage.getItem('active_user_role') || 'PATIENT';
     const { data } = await apiClient.post('/medications', {
       ...payload,
       patientId: resolvedPatientId,

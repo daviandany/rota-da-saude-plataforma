@@ -341,14 +341,23 @@ class PostgresDatabase implements IDatabase {
       CREATE TABLE IF NOT EXISTS medications (
         id VARCHAR(64) PRIMARY KEY,
         patient_id VARCHAR(64) NOT NULL,
+        patient_name VARCHAR(255),
+        patient_email VARCHAR(255),
         name VARCHAR(255) NOT NULL,
         dosage VARCHAR(100) NOT NULL,
         frequency VARCHAR(100) NOT NULL,
         reminder_times TEXT[] NOT NULL DEFAULT '{}',
         status VARCHAR(50) NOT NULL DEFAULT 'ATIVO',
         notes TEXT,
+        added_by_role VARCHAR(50) DEFAULT 'PATIENT',
+        prescribed_by VARCHAR(255),
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
+
+      ALTER TABLE medications ADD COLUMN IF NOT EXISTS patient_name VARCHAR(255);
+      ALTER TABLE medications ADD COLUMN IF NOT EXISTS patient_email VARCHAR(255);
+      ALTER TABLE medications ADD COLUMN IF NOT EXISTS added_by_role VARCHAR(50) DEFAULT 'PATIENT';
+      ALTER TABLE medications ADD COLUMN IF NOT EXISTS prescribed_by VARCHAR(255);
 
       CREATE TABLE IF NOT EXISTS appointments (
         id VARCHAR(64) PRIMARY KEY,
@@ -713,21 +722,39 @@ class PostgresDatabase implements IDatabase {
     return res.rows.map((r) => ({
       id: r.id,
       patientId: r.patient_id,
+      patientName: r.patient_name,
+      patientEmail: r.patient_email,
       name: r.name,
       dosage: r.dosage,
       frequency: r.frequency,
       reminderTimes: r.reminder_times,
       status: r.status,
       notes: r.notes,
+      addedByRole: r.added_by_role || 'PATIENT',
+      prescribedBy: r.prescribed_by,
       createdAt: r.created_at,
     }));
   }
 
   async addMedication(m: Medication): Promise<Medication> {
     await this.pool.query(
-      `INSERT INTO medications (id, patient_id, name, dosage, frequency, reminder_times, status, notes, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [m.id, m.patientId, m.name, m.dosage, m.frequency, m.reminderTimes, m.status, m.notes, m.createdAt]
+      `INSERT INTO medications (id, patient_id, patient_name, patient_email, name, dosage, frequency, reminder_times, status, notes, added_by_role, prescribed_by, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+      [
+        m.id,
+        m.patientId,
+        m.patientName || null,
+        m.patientEmail || null,
+        m.name,
+        m.dosage,
+        m.frequency,
+        m.reminderTimes,
+        m.status,
+        m.notes,
+        m.addedByRole || 'PATIENT',
+        m.prescribedBy || null,
+        m.createdAt,
+      ]
     );
     return m;
   }
@@ -742,19 +769,26 @@ class PostgresDatabase implements IDatabase {
     const reminderTimes = data.reminderTimes !== undefined ? data.reminderTimes : current.reminder_times;
     const notes = data.notes !== undefined ? data.notes : current.notes;
     const status = data.status !== undefined ? data.status : current.status;
+    const addedByRole = data.addedByRole !== undefined ? data.addedByRole : current.added_by_role;
+    const prescribedBy = data.prescribedBy !== undefined ? data.prescribedBy : current.prescribed_by;
+
     await this.pool.query(
-      'UPDATE medications SET name = $1, dosage = $2, frequency = $3, reminder_times = $4, notes = $5, status = $6 WHERE id = $7',
-      [name, dosage, frequency, reminderTimes, notes, status, id]
+      'UPDATE medications SET name = $1, dosage = $2, frequency = $3, reminder_times = $4, notes = $5, status = $6, added_by_role = $7, prescribed_by = $8 WHERE id = $9',
+      [name, dosage, frequency, reminderTimes, notes, status, addedByRole, prescribedBy, id]
     );
     return {
       id: current.id,
       patientId: current.patient_id,
+      patientName: current.patient_name,
+      patientEmail: current.patient_email,
       name,
       dosage,
       frequency,
       reminderTimes,
       notes,
       status,
+      addedByRole,
+      prescribedBy,
       createdAt: current.created_at,
     };
   }
@@ -764,12 +798,16 @@ class PostgresDatabase implements IDatabase {
     return res.rows.map((r) => ({
       id: r.id,
       patientId: r.patient_id,
+      patientName: r.patient_name,
+      patientEmail: r.patient_email,
       name: r.name,
       dosage: r.dosage,
       frequency: r.frequency,
       reminderTimes: r.reminder_times,
       status: r.status,
       notes: r.notes,
+      addedByRole: r.added_by_role || 'PATIENT',
+      prescribedBy: r.prescribed_by,
       createdAt: r.created_at,
     }));
   }

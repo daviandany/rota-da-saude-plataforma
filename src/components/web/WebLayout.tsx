@@ -119,13 +119,11 @@ export const WebLayout: React.FC<WebLayoutProps> = ({
                   </option>
                 )}
                 <option value="__ROLE_PROFESSIONAL__" className="bg-slate-900 text-indigo-300 font-bold">
-                  Modo Médico (Prescrever · Mesmo Login)
+                  Modo Médico (Dr. Carlos · UBS)
                 </option>
-                {user?.role === 'PROFESSIONAL' && linkedPatients.length === 0 && (
-                  <option value="__ROLE_PATIENT__" className="bg-slate-900 text-teal-300 font-bold">
-                    Modo Paciente (Mesmo Login)
-                  </option>
-                )}
+                <option value="__ROLE_PATIENT__" className="bg-slate-900 text-teal-300 font-bold">
+                  Modo Paciente (Prontuário SUS)
+                </option>
               </select>
             </div>
 

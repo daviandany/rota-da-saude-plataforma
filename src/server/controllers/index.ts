@@ -317,7 +317,8 @@ export const medicationController = {
         addedByRole,
         prescribedBy,
       } = req.body;
-      const isDoctorActor = req.user?.role === 'PROFESSIONAL' || addedByRole === 'PROFESSIONAL';
+      // Apenas usuários com papel PROFESSIONAL podem prescrever medicamentos
+      const isDoctorActor = req.user?.role === 'PROFESSIONAL';
       const fallback =
         patientId || isDoctorActor
           ? {
@@ -331,7 +332,7 @@ export const medicationController = {
         patientId || req.user?.profileId,
         fallback
       );
-      const role = isDoctorActor ? 'PROFESSIONAL' : req.user?.role || addedByRole || 'PATIENT';
+      const role = isDoctorActor ? 'PROFESSIONAL' : 'PATIENT';
       const med = await MedicationService.add({
         patientId: patient.id,
         patientName: patientName || patient?.name,
@@ -343,7 +344,7 @@ export const medicationController = {
         notes,
         addedByRole: role,
         prescribedBy:
-          role === 'PROFESSIONAL'
+          isDoctorActor
             ? prescribedBy || req.user?.name || 'Médico da Equipe ESF'
             : undefined,
       });
