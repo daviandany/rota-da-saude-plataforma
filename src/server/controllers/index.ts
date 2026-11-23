@@ -596,5 +596,52 @@ export const reportController = {
   },
 };
 
-export { notificationController } from './notificationController.js';
+export const supportController = {
+  async sendContact(req: Request, res: Response) {
+    try {
+      const { phone, email, subject, message, patientName } = req.body;
+      const digits = String(phone || '').replace(/\D/g, '');
+      if (digits.length < 10 || digits.length > 11) {
+        return res.status(400).json({
+          success: false,
+          error: 'Informe um número de telefone válido com DDD (10 ou 11 dígitos).',
+        });
+      }
+      const cleanEmail = String(email || req.user?.email || '').trim();
+      if (!cleanEmail || !cleanEmail.includes('@')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Informe um endereço de e-mail válido para retorno.',
+        });
+      }
+      const cleanMessage = String(message || '').trim();
+      if (cleanMessage.length < 5) {
+        return res.status(400).json({
+          success: false,
+          error: 'Descreva sua dúvida ou solicitação para que possamos ajudar.',
+        });
+      }
 
+      const protocol = `SUP-${Date.now().toString(36).toUpperCase()}`;
+      const sentAt = new Date().toISOString();
+
+      return res.status(201).json({
+        success: true,
+        data: {
+          protocol,
+          targetEmail: 'suporte@rotadasaude.gov.br',
+          patientName: patientName || req.user?.name || 'Paciente SUS',
+          email: cleanEmail,
+          phone: String(phone).trim(),
+          subject: String(subject || 'Dúvida pelo FAQ do Paciente').trim(),
+          message: cleanMessage,
+          sentAt,
+        },
+      });
+    } catch (err: any) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  },
+};
+
+export { notificationController } from './notificationController.js';

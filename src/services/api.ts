@@ -874,4 +874,25 @@ export const api = {
     const { data } = await apiClient.get('/notifications/fcm-config');
     return data;
   },
+
+  // Support / Contact via Email
+  async sendSupportContact(payload: {
+    phone: string;
+    email: string;
+    subject?: string;
+    message: string;
+    patientName?: string;
+  }): Promise<{
+    protocol: string;
+    targetEmail: string;
+    patientName: string;
+    email: string;
+    phone: string;
+    subject: string;
+    message: string;
+    sentAt: string;
+  }> {
+    const { data } = await apiClient.post('/support/contact', payload);
+    return data.data;
+  },
 };

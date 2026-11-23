@@ -9,6 +9,7 @@ import {
   contentController,
   reportController,
   notificationController,
+  supportController,
 } from '../controllers/index.js';
 import { authMiddleware, requireRole } from '../middlewares/authMiddleware.js';
 import { getDatabase } from '../db/database.js';
@@ -90,4 +91,7 @@ apiRouter.post('/notifications/:id/read', authMiddleware, notificationController
 apiRouter.post('/notifications/read-all', authMiddleware, notificationController.markAllAsRead);
 apiRouter.post('/notifications/test-medication', authMiddleware, notificationController.testMedicationReminder);
 apiRouter.post('/notifications/test-critical-reading', authMiddleware, notificationController.testCriticalReading);
+
+// Support Contact (FAQ Email Contact)
+apiRouter.post('/support/contact', authMiddleware, supportController.sendContact);
 

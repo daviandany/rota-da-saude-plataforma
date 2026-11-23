@@ -37,6 +37,7 @@ import { PatientSummary, BloodPressureRecord, GlucoseRecord, Medication, Appoint
 import { useNotifications } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 import { generateMedicalReportPDF } from '../../utils/pdfGenerator';
+import { PatientFaqWidget } from '../patient/PatientFaqWidget';
 
 interface WebPatientDashboardProps {
   onOpenPressureModal: () => void;
@@ -272,7 +273,7 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
   const glucLinePath = buildSmoothPath(glucosePoints.map((p) => ({ x: p.x, y: p.y })));
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-16">
       {/* 1. BARRA DE ACESSOS RÁPIDOS (QUICK ACCESS BAR) */}
       <section aria-label="Acessos Rápidos" className="bg-white dark:bg-slate-900 rounded-2xl p-3 sm:p-4 border border-slate-200/80 dark:border-slate-800 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1609,6 +1610,19 @@ export const WebPatientDashboard: React.FC<WebPatientDashboardProps> = ({
           </div>
         </div>
       )}
+
+      {/* FAQ Flutuante no Canto Inferior Direito com Navegação Direta para Abas */}
+      <PatientFaqWidget
+        activeTab={activeTab}
+        onNavigateTab={(tab) => setActiveTab(tab)}
+        onOpenPressureModal={onOpenPressureModal}
+        onOpenGlucoseModal={onOpenGlucoseModal}
+        onOpenAddMedication={onOpenAddMedication}
+        onOpenScheduleAppointment={onOpenScheduleAppointment}
+        onDownloadPDF={handleDownloadPDF}
+        onOpenEmergencyModal={onOpenEmergencyModal}
+        onOpenSymptomModal={onOpenSymptomModal}
+      />
     </div>
   );
 };
